@@ -25,7 +25,7 @@ func init() {
 // RunTicketCLI is the entry for `ldgr ticket ...`.
 func RunTicketCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ldgr ticket <add|event> [flags]")
+		fmt.Fprintln(stderr, "usage: ldgr ticket <add|event|ready> [flags]")
 		return 2
 	}
 	sub, rest := args[0], args[1:]
@@ -34,6 +34,8 @@ func RunTicketCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runTicketAdd(rest, stdin, stdout, stderr)
 	case "event":
 		return runTicketEvent(rest, stdin, stdout, stderr)
+	case "ready":
+		return runTicketReady(rest, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown ticket subcommand: %s\n", sub)
 		return 2
@@ -301,4 +303,61 @@ func emitTicketGuidance(dir string, row map[string]any, stderr io.Writer) {
 	worklog, _ := ledger.ReadRows(filepath.Join(dir, "ledger", "worklog.jsonl"))
 	g := guidance.Compute(latest, worklog)
 	fmt.Fprint(stderr, guidance.RenderText(g))
+}
+
+// multiString is a flag.Value for repeatable string flags.
+type multiString []string
+
+func (m *multiString) String() string { return "" }
+func (m *multiString) Set(v string) error {
+	*m = append(*m, v)
+	return nil
+}
+
+func stringsToAny(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
+}
+
+func runTicketReady(args []string, stdout, stderr io.Writer) int {
+	fs := newFlagSet("ticket ready")
+	target := fs.String("target", "", "")
+	ticket := fs.String("ticket", "", "")
+	var evidence multiString
+	fs.Var(&evidence, "evidence", "evidence (repeatable)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *ticket == "" {
+		fmt.Fprintln(stderr, "--ticket is required")
+		return 2
+	}
+	if len(evidence) == 0 {
+		fmt.Fprintln(stderr, "at least one --evidence is required")
+		return 2
+	}
+	dir := resolveTarget(*target)
+	// Build event JSON as map, hand to normalizeTicketEvent.
+	input := map[string]any{
+		"ticket":   *ticket,
+		"status":   "audit_ready",
+		"evidence": stringsToAny(evidence),
+	}
+	row, err := normalizeTicketEvent(dir, input, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	out, err := ledger.Append(filepath.Join(dir, "ledger", "tickets.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	emitTicketGuidance(dir, out, stderr)
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	return encErr(enc.Encode(out), stderr)
 }
