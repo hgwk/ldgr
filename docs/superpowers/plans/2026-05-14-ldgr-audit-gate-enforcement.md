@@ -20,7 +20,7 @@
 
 ## Hard Acceptance Criteria
 
-1. `ldgr ticket add` accepts only initial states that do not imply completed work: `open`, `blocked`, or `cancelled`.
+1. `ldgr ticket add` accepts only initial states that do not imply completed work: `open` or `in_progress`.
 2. `ldgr ticket event` enforces the allowed transition graph:
    - `open -> in_progress | blocked | cancelled`
    - `in_progress -> audit_ready | blocked | cancelled`
@@ -79,6 +79,9 @@ Current status mapping:
 Allowed status transitions:
 
 ```text
+<new> -> open
+<new> -> in_progress
+
 open -> in_progress
 open -> blocked
 open -> cancelled
