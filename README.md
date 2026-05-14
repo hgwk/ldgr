@@ -57,21 +57,58 @@ ldgr suggest worklog --ticket BUG-101        # JSON skeleton, only after audit p
 ldgr suggest commit  --ticket BUG-101        # Conventional Commit + PR/verification scaffold
 ```
 
-The state machine pushes you through `open → in_progress → audit_ready → done`.
-`done` means an audit row with `audit_result=pass` is on file. `ldgr worklog add`
-is intended for shipped work after that audit row; the binary warns when it sees
-you doing it earlier.
+The lifecycle is **enforced**, not advisory:
+
+- Implementation moves through `open → in_progress → audit_ready` only.
+- `audit_ready` requires non-empty `evidence`.
+- Closing a ticket requires a separate audit row: `role=audit`, `status=done`,
+  `audit_result=pass`, non-empty `evidence`, and `reviewed_n` pointing at the
+  audit_ready row.
+- `changes_requested` is also an audit row: `role=audit`,
+  `audit_result=changes_requested`, `audit_notes`, and `reviewed_n`.
+- `ldgr worklog add` is gated — it requires the ticket's latest row to be
+  audit-pass done. Pre-audit calls are rejected.
+- `ldgr suggest commit` refuses to scaffold before audit pass; use
+  `--allow-unaudited` only when you know what you're doing.
+
+Shortcut commands handle the common path:
+
+```bash
+ldgr ticket ready --ticket BUG-101 --evidence "go test ./..."
+ldgr audit pass --ticket BUG-101 --evidence "go test ./..."
+ldgr audit request-changes --ticket BUG-101 --notes "missing regression coverage"
+```
+
+`audit pass` and `audit request-changes` auto-set `reviewed_n` from the latest
+`audit_ready` row.
+
+If you maintain a legacy ledger with historical rows that violate the new
+lifecycle, run `ldgr verify` (default) for warnings; weak/historical rows do
+not block commits. Use `ldgr verify --strict` only when you've intentionally
+cleaned things up.
 
 ## Install
-
-Until v1 is tagged, build from source:
 
 ```bash
 go install github.com/hgwk/ldgr@latest
 ```
 
-After v1, GitHub Releases will publish `ldgr_<version>_<os>_<arch>.tar.gz`
-artifacts for darwin/linux × arm64/amd64.
+Make sure `$(go env GOPATH)/bin` is on your `$PATH`. macOS/Linux:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+For release tarballs (after a `v*` tag has been published):
+
+```bash
+curl -sSL -o ldgr.tar.gz \
+  https://github.com/hgwk/ldgr/releases/download/v0.1.0/ldgr_0.1.0_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+tar -xzf ldgr.tar.gz
+sudo mv ldgr_*/ldgr /usr/local/bin/ldgr
+```
+
+(Adjust the architecture detection for your platform if the substitution fails.)
 
 ## Integrate into a repo
 

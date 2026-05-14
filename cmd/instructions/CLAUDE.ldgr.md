@@ -25,20 +25,30 @@ After every write, stderr contains the next concrete action. Read it.
 
 ## Lifecycle the binary will enforce
 
-1. Implementation: `open → in_progress → audit_ready` (you).
-2. Audit: append `role=audit` row with `audit_result=pass` (done) or
-   `changes_requested`.
-3. Worklog: only after the audit-pass `done` row.
-4. Commit/PR: `ldgr suggest commit --ticket <id>` gives you the Conventional
-   Commit line + verification block.
+1. Implementation: `open → in_progress → audit_ready` (this is you).
+2. Audit (separate row): `role=audit`, `status=done`, `audit_result=pass`,
+   non-empty `evidence`, and `reviewed_n` referencing the audit_ready row.
+3. Worklog: only after the audit-pass `done` row. Worklog also requires
+   a `ticket` field on the new CLI surface.
+4. Commit/PR: `ldgr suggest commit --ticket <id>` gives the Conventional
+   Commit + verification block (refused before audit pass without
+   `--allow-unaudited`).
 
 ## When confused
 
 ```bash
 ldgr next --ticket <id>
+ldgr next --ticket <id> --format json
 ldgr suggest worklog --ticket <id>
 ldgr suggest commit  --ticket <id>
 ```
 
-These read the ledger and tell you exactly which JSON to feed back into
-`--json @-`.
+For the common audit path:
+
+```bash
+ldgr ticket ready --ticket <id> --evidence "go test ./..."
+ldgr audit pass --ticket <id> --evidence "go test ./..."
+ldgr audit request-changes --ticket <id> --notes "..."
+```
+
+These read the ledger, validate the transition, and write the right row.
