@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/hgwk/ldgr/internal/config"
 	"github.com/hgwk/ldgr/internal/jsonio"
@@ -68,6 +70,10 @@ func runWith(targetDir string, strict bool) (Report, error) {
 	checkOrphans(&rep, ticketRows, worklogRows)
 	checkBlockers(&rep, ticketRows)
 	checkParents(&rep, ticketRows, cfg.Parents)
+	checkLifecycleTransitions(&rep, ticketRows)
+	checkWeakDone(&rep, ticketRows)
+	checkAuditReviewedN(&rep, ticketRows)
+	checkPrematureWorklog(&rep, ticketRows, worklogRows)
 
 	if strict {
 		rep.Fails = append(rep.Fails, rep.Warns...)
@@ -77,6 +83,16 @@ func runWith(targetDir string, strict bool) (Report, error) {
 }
 
 var isoRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$`)
+
+// lifecycleTransitions mirrors the state machine in internal/lifecycle.
+var lifecycleTransitions = map[string]map[string]bool{
+	"":                  {"open": true, "in_progress": true},
+	"open":              {"in_progress": true, "blocked": true, "cancelled": true},
+	"in_progress":       {"audit_ready": true, "blocked": true, "cancelled": true},
+	"blocked":           {"in_progress": true, "cancelled": true},
+	"audit_ready":       {"done": true, "changes_requested": true, "cancelled": true},
+	"changes_requested": {"in_progress": true, "open": true, "cancelled": true},
+}
 
 func checkRows(rep *Report, file string, rows []ledger.Row, required []string, isTicket bool) {
 	prevTS := ""
@@ -219,4 +235,183 @@ func checkParents(rep *Report, tickets []ledger.Row, parents []string) {
 			rep.Warns = append(rep.Warns, Issue{File: "ledger/tickets.jsonl", Line: i + 1, Message: "unknown parent_ticket: " + p})
 		}
 	}
+}
+
+func checkLifecycleTransitions(rep *Report, tickets []ledger.Row) {
+	// Bucket rows by ticket id, excluding correction rows.
+	byTicket := map[string][]ledger.Row{}
+	for _, r := range tickets {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		id, _ := r["ticket"].(string)
+		if id == "" {
+			continue
+		}
+		byTicket[id] = append(byTicket[id], r)
+	}
+
+	// For each ticket, sort rows by n and check transitions.
+	for id, rows := range byTicket {
+		sort.SliceStable(rows, func(i, j int) bool {
+			ai, _ := rows[i]["n"].(float64)
+			aj, _ := rows[j]["n"].(float64)
+			return ai < aj
+		})
+		for i := 1; i < len(rows); i++ {
+			prevS, _ := rows[i-1]["status"].(string)
+			curS, _ := rows[i]["status"].(string)
+			if curS == "" || prevS == curS {
+				continue
+			}
+			if !lifecycleTransitions[prevS][curS] {
+				ln, _ := rows[i]["n"].(float64)
+				rep.Warns = append(rep.Warns, Issue{
+					File:    "ledger/tickets.jsonl",
+					Line:    int(ln),
+					Message: fmt.Sprintf("[INVALID_TRANSITION] %s: %s -> %s", id, prevS, curS),
+				})
+			}
+		}
+	}
+}
+
+func checkWeakDone(rep *Report, tickets []ledger.Row) {
+	for _, r := range tickets {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		if s, _ := r["status"].(string); s != "done" {
+			continue
+		}
+		id, _ := r["ticket"].(string)
+		ln, _ := r["n"].(float64)
+
+		if role, _ := r["role"].(string); role != "audit" {
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/tickets.jsonl",
+				Line:    int(ln),
+				Message: fmt.Sprintf("[WEAK_DONE] %s: role != audit", id),
+			})
+			continue
+		}
+		if ar, _ := r["audit_result"].(string); ar != "pass" {
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/tickets.jsonl",
+				Line:    int(ln),
+				Message: fmt.Sprintf("[WEAK_DONE] %s: audit_result != pass", id),
+			})
+			continue
+		}
+		if !hasNonEmptyEvidence(r) {
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/tickets.jsonl",
+				Line:    int(ln),
+				Message: fmt.Sprintf("[WEAK_DONE] %s: evidence empty", id),
+			})
+		}
+	}
+}
+
+func checkAuditReviewedN(rep *Report, tickets []ledger.Row) {
+	for _, r := range tickets {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		if role, _ := r["role"].(string); role != "audit" {
+			continue
+		}
+		s, _ := r["status"].(string)
+		if s != "done" && s != "changes_requested" {
+			continue
+		}
+		if !hasPositiveNumber(r, "reviewed_n") {
+			id, _ := r["ticket"].(string)
+			ln, _ := r["n"].(float64)
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/tickets.jsonl",
+				Line:    int(ln),
+				Message: fmt.Sprintf("[AUDIT_MISSING_REVIEWED_N] %s", id),
+			})
+		}
+	}
+}
+
+func checkPrematureWorklog(rep *Report, tickets, worklog []ledger.Row) {
+	// Build a map of latest ticket row per id (excluding correction rows).
+	latest := map[string]ledger.Row{}
+	for _, r := range tickets {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		id, _ := r["ticket"].(string)
+		if id == "" {
+			continue
+		}
+		if cur, ok := latest[id]; ok {
+			cn, _ := cur["n"].(float64)
+			n, _ := r["n"].(float64)
+			if n <= cn {
+				continue
+			}
+		}
+		latest[id] = r
+	}
+
+	// Helper: check if a row is audit-pass done.
+	isAuditPass := func(r ledger.Row) bool {
+		if s, _ := r["status"].(string); s != "done" {
+			return false
+		}
+		if role, _ := r["role"].(string); role != "audit" {
+			return false
+		}
+		if ar, _ := r["audit_result"].(string); ar != "pass" {
+			return false
+		}
+		return true
+	}
+
+	// Check each worklog row.
+	for _, w := range worklog {
+		if _, isCompanion := w["invalidates_n"]; isCompanion {
+			continue
+		}
+		id, _ := w["ticket"].(string)
+		if id == "" {
+			continue
+		}
+		lr, ok := latest[id]
+		if !ok {
+			continue // Orphan worklog caught elsewhere.
+		}
+		if !isAuditPass(lr) {
+			ln, _ := w["n"].(float64)
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/worklog.jsonl",
+				Line:    int(ln),
+				Message: fmt.Sprintf("[PREMATURE_WORKLOG] %s", id),
+			})
+		}
+	}
+}
+
+func hasNonEmptyEvidence(r ledger.Row) bool {
+	arr, _ := r["evidence"].([]any)
+	for _, v := range arr {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPositiveNumber(r ledger.Row, key string) bool {
+	switch v := r[key].(type) {
+	case float64:
+		return v > 0
+	case int:
+		return v > 0
+	}
+	return false
 }

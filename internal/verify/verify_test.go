@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hgwk/ldgr/internal/config"
@@ -253,4 +254,87 @@ func validConfigJSON() string {
 
 func validGoalJSON() string {
 	return `{"schema_version":1,"track":"project","version":"0.1.0","updated":"2026-05-14T00:00:00Z","source_of_truth":"README.md","summary":"x","success_criteria":[]}`
+}
+
+func hasWarn(r Report, code string) bool {
+	for _, w := range r.Warns {
+		if strings.Contains(w.Message, code) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFail(r Report, code string) bool {
+	for _, f := range r.Fails {
+		if strings.Contains(f.Message, code) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestVerify_WarnsOnWeakDone(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"WD-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"done","task":"weak","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "WEAK_DONE") {
+		t.Fatalf("expected WEAK_DONE warn, got %+v", report)
+	}
+	if len(report.Fails) != 0 {
+		t.Fatalf("default verify must not fail on weak done; got %+v", report.Fails)
+	}
+	strict, _ := RunStrict(dir, true)
+	if !hasFail(strict, "WEAK_DONE") {
+		t.Fatalf("strict verify must fail on weak done")
+	}
+}
+
+func TestVerify_WarnsOnInvalidTransition(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"IT-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":2,"ts":"2026-05-14T10:01:00Z","ticket":"IT-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"audit_ready","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":"","evidence":["x"]}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "INVALID_TRANSITION") {
+		t.Fatalf("expected INVALID_TRANSITION warn: %+v", report)
+	}
+}
+
+func TestVerify_WarnsOnAuditMissingReviewedN(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"AR-1","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["x"],"task":"audit","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "AUDIT_MISSING_REVIEWED_N") {
+		t.Fatalf("expected AUDIT_MISSING_REVIEWED_N warn: %+v", report)
+	}
+}
+
+func TestVerify_WarnsOnPrematureWorklog(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"PW-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"audit_ready","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":"","evidence":["x"]}
+`,
+		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:01:00Z","ticket":"PW-1","agent":"codex","task":"early","scope":"repo","result":"too soon","paths":[],"commands":[],"notes":"","branch":"","commit":""}
+`,
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "PREMATURE_WORKLOG") {
+		t.Fatalf("expected PREMATURE_WORKLOG warn: %+v", report)
+	}
 }
