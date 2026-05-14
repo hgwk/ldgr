@@ -338,3 +338,30 @@ func TestVerify_WarnsOnPrematureWorklog(t *testing.T) {
 		t.Fatalf("expected PREMATURE_WORKLOG warn: %+v", report)
 	}
 }
+
+func TestVerify_IssueCodePopulated(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"WD-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"done","task":"weak","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	var codes []string
+	for _, w := range report.Warns {
+		codes = append(codes, w.Code)
+	}
+	if !contains(codes, "WEAK_DONE") {
+		t.Fatalf("expected WEAK_DONE code among warns, got %v", codes)
+	}
+}
+
+func contains(xs []string, x string) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
