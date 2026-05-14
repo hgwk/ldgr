@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ldgr</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<aside id="sidebar">
+  <h1>ldgr</h1>
+  <div class="nav-section">Projects</div>
+  <ul id="project-list" class="nav-list"><li class="meta">loading…</li></ul>
+  <div class="nav-section">View</div>
+  <ul id="page-nav" class="nav-list">
+    <li data-page="dashboard" class="active">Dashboard</li>
+    <li data-page="kanban">Kanban</li>
+    <li data-page="tree">Tree</li>
+    <li data-page="worklog">Worklog</li>
+    <li data-page="insights">Insights</li>
+  </ul>
+</aside>
+<main id="main">
+  <header id="topbar">
+    <h2 id="project-name">Select a project</h2>
+    <span id="project-display" class="display"></span>
+  </header>
+  <div id="page"></div>
+</main>
+<aside id="drawer" aria-hidden="true">
+  <button class="close" aria-label="Close">✕</button>
+  <div id="drawer-body"></div>
+</aside>
+<script src="/assets/app.js"></script>
+</body>
+</html>

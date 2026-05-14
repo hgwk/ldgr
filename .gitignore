@@ -1,0 +1,14 @@
+# build artifacts
+/ldgr
+/dist/
+
+# Go
+*.test
+*.out
+
+# OS
+.DS_Store
+
+# AI assistant memory (local-only)
+.serena/
+.claude/

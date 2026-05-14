@@ -1,0 +1,3 @@
+{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"BUG-101","parent_ticket":"","agent":"codex","role":"impl","status":"open","task":"fix login","scope":"repo","paths":["src/login.go"],"blocked_by":[],"branch":""}
+{"n":2,"ts":"2026-05-14T10:05:00Z","ticket":"","parent_ticket":"","agent":"","role":"impl","status":"done","task":"","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":3,"ts":"2026-05-14T10:10:00Z","ticket":"FE-2","parent_ticket":"FE","agent":"claude","role":"impl","status":"open","task":"render","scope":"repo","paths":[],"blocked_by":[],"branch":""}

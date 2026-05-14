@@ -1,0 +1,270 @@
+package viewer
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hgwk/ldgr/internal/config"
+	"github.com/hgwk/ldgr/internal/jsonio"
+	"github.com/hgwk/ldgr/internal/registry"
+)
+
+func newTestServer(t *testing.T) (*Server, string) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.Default("myapp", "id-1", "")
+	if err := os.MkdirAll(filepath.Join(dir, "ledger"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := config.Save(filepath.Join(dir, "ledger", "config.json"), cfg); err != nil {
+		t.Fatalf("config save: %v", err)
+	}
+	// goal seed
+	jsonio.WriteJSON(filepath.Join(dir, "ledger", "goal.json"), map[string]any{
+		"schema_version":   1,
+		"summary":          "hello",
+		"success_criteria": []any{},
+	})
+	// seed tickets jsonl
+	os.WriteFile(filepath.Join(dir, "ledger", "tickets.jsonl"),
+		[]byte(`{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"BUG-1","parent_ticket":"BUG","agent":"codex","role":"impl","status":"open","task":"t","scope":"repo","paths":[],"blocked_by":[],"branch":""}`+"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "ledger", "worklog.jsonl"), []byte{}, 0o644)
+
+	srv, err := NewSingleProjectServer(dir)
+	if err != nil {
+		t.Fatalf("server: %v", err)
+	}
+	srv.Now = func() time.Time { return time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC) }
+	return srv, "id-1"
+}
+
+func getJSON(t *testing.T, h http.Handler, path string, out any) int {
+	t.Helper()
+	req := httptest.NewRequest("GET", path, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK && out != nil {
+		if err := json.NewDecoder(rec.Body).Decode(out); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+	}
+	return rec.Code
+}
+
+func TestServer_ProjectsListsRegistered(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var arr []map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects", &arr); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if len(arr) != 1 || arr[0]["project_id"] != pid {
+		t.Fatalf("expected single project %s, got %+v", pid, arr)
+	}
+	disp, _ := arr[0]["display"].(string)
+	if disp == "" {
+		t.Fatalf("display missing: %+v", arr[0])
+	}
+}
+
+func TestServer_GETProjectIDReturns404OnUnknown(t *testing.T) {
+	srv, _ := newTestServer(t)
+	c := getJSON(t, srv.Handler(), "/api/projects/does-not-exist", nil)
+	if c != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", c)
+	}
+}
+
+func TestServer_TicketsTreeShape(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/tickets", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	tree, _ := resp["tree"].([]any)
+	if len(tree) != 1 {
+		t.Fatalf("want 1 bucket, got %v", tree)
+	}
+	bucket, _ := tree[0].(map[string]any)
+	if bucket["parent"] != "BUG" {
+		t.Fatalf("want parent=BUG, got %v", bucket["parent"])
+	}
+}
+
+func TestServer_GoalEndpoint(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/goal", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if resp["summary"] != "hello" {
+		t.Fatalf("goal endpoint returned wrong body: %+v", resp)
+	}
+}
+
+func TestServer_WorklogReverseChronological(t *testing.T) {
+	srv, pid := newTestServer(t)
+	// Append worklog rows in-place for this test.
+	srv.LoadProject = wrapWithExtraWorklog(srv.LoadProject)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/worklog", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	rows, _ := resp["rows"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	first, _ := rows[0].(map[string]any)
+	if first["ts"] != "2026-05-14T10:05:00Z" {
+		t.Fatalf("want newest first, got %v", first["ts"])
+	}
+}
+
+func TestServer_ProjectSummaryCountsAuditLifecycleAsActive(t *testing.T) {
+	srv, pid := newTestServer(t)
+	orig := srv.LoadProject
+	srv.LoadProject = func(id string) (Project, error) {
+		p, err := orig(id)
+		if err != nil {
+			return p, err
+		}
+		p.Tickets = append(p.Tickets,
+			map[string]any{"n": float64(2), "ts": "2026-05-14T10:01:00Z", "ticket": "AUDIT-1", "parent_ticket": "ROOT", "agent": "codex", "role": "impl", "status": "audit_ready", "task": "audit", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "branch": ""},
+			map[string]any{"n": float64(3), "ts": "2026-05-14T10:02:00Z", "ticket": "FIX-1", "parent_ticket": "ROOT", "agent": "codex", "role": "audit", "status": "changes_requested", "task": "fix", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "branch": ""},
+		)
+		return p, nil
+	}
+	var arr []map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects", &arr); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if len(arr) != 1 || arr[0]["project_id"] != pid {
+		t.Fatalf("project list wrong: %+v", arr)
+	}
+	if arr[0]["open_tickets"] != float64(3) {
+		t.Fatalf("audit lifecycle statuses should count as active, got %+v", arr[0])
+	}
+}
+
+func wrapWithExtraWorklog(orig func(string) (Project, error)) func(string) (Project, error) {
+	return func(id string) (Project, error) {
+		p, err := orig(id)
+		if err != nil {
+			return p, err
+		}
+		p.Worklog = append(p.Worklog,
+			map[string]any{"n": float64(1), "ts": "2026-05-14T10:00:00Z", "ticket": "BUG-1", "agent": "codex", "task": "old"},
+			map[string]any{"n": float64(2), "ts": "2026-05-14T10:05:00Z", "ticket": "BUG-1", "agent": "codex", "task": "new"},
+		)
+		return p, nil
+	}
+}
+
+func TestServer_InsightsHasReadyQueue(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/insights", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	rq, _ := resp["readyQueue"].([]any)
+	if len(rq) == 0 {
+		t.Fatalf("readyQueue empty: %+v", resp)
+	}
+}
+
+func TestServer_SingleProjectMode(t *testing.T) {
+	srv, _ := newTestServer(t)
+	var arr []map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects", &arr); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if len(arr) != 1 {
+		t.Fatalf("single-project mode must return exactly 1 project, got %d", len(arr))
+	}
+}
+
+// silence unused import warning if test compilation strips it
+var _ = registry.Registry{}
+
+func TestServer_DashboardShape(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/dashboard", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	for _, k := range []string{"progress", "parents", "audit", "health", "recent"} {
+		if _, ok := resp[k]; !ok {
+			t.Fatalf("missing key %s in dashboard response: %+v", k, resp)
+		}
+	}
+}
+
+func TestServer_KanbanShape(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/kanban", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	cols, _ := resp["columns"].([]any)
+	if len(cols) != 4 {
+		t.Fatalf("want 4 columns, got %d", len(cols))
+	}
+	wantIDs := []string{"plan", "implement", "verify", "complete"}
+	for i, raw := range cols {
+		col, _ := raw.(map[string]any)
+		if col["id"] != wantIDs[i] {
+			t.Fatalf("column %d id=%v want %s", i, col["id"], wantIDs[i])
+		}
+	}
+}
+
+func TestServer_TicketDetailShape(t *testing.T) {
+	srv, pid := newTestServer(t)
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/"+pid+"/tickets/BUG-1", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if resp["ticket"] != "BUG-1" {
+		t.Fatalf("ticket field wrong: %v", resp["ticket"])
+	}
+	if _, ok := resp["latest"]; !ok {
+		t.Fatalf("missing latest: %+v", resp)
+	}
+	if _, ok := resp["history"]; !ok {
+		t.Fatalf("missing history: %+v", resp)
+	}
+	if _, ok := resp["worklog"]; !ok {
+		t.Fatalf("missing worklog: %+v", resp)
+	}
+}
+
+func TestServer_TicketDetailUnknown404(t *testing.T) {
+	srv, pid := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/projects/"+pid+"/tickets/does-not-exist", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestServer_ServesIndex(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("content-type %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "<title>ldgr</title>") {
+		t.Fatalf("index body missing title:\n%s", rec.Body.String())
+	}
+}
