@@ -43,14 +43,15 @@ function setError(container, err) {
   container.appendChild(el("div", { class: "state-error", text: "API error: " + err.message }));
 }
 
-async function loadProjects() {
+async function loadProjects(opts) {
+  const background = Boolean(opts && opts.background);
   try {
     const projects = await getJSON("/api/projects");
     renderProjectList(projects);
     if (!state.projectId && projects.length > 0) {
       selectProject(projects[0].project_id);
     } else if (state.projectId) {
-      loadPage();
+      loadPage({ background });
     }
   } catch (e) {
     const list = $("project-list");
@@ -120,14 +121,15 @@ async function loadHeader() {
   }
 }
 
-async function loadPage() {
+async function loadPage(opts) {
+  const background = Boolean(opts && opts.background);
   const page = $("page");
   if (!state.projectId) {
     page.innerHTML = "";
     page.appendChild(el("div", { class: "state-empty", text: "Pick a project from the sidebar." }));
     return;
   }
-  setLoading(page);
+  if (!background) setLoading(page);
   try {
     switch (state.page) {
       case "dashboard": await renderDashboard(page); break;
@@ -507,7 +509,7 @@ function bind() {
 }
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(loadProjects, POLL_MS);
+  pollTimer = setInterval(() => loadProjects({ background: true }), POLL_MS);
 }
 (function init() {
   const params = new URLSearchParams(location.search);
