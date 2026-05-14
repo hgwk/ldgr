@@ -18,7 +18,7 @@ func init() {
 
 func RunImportCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "legacy" {
-		fmt.Fprintln(stderr, "usage: ldgr import legacy --target PATH (--plan | --apply [--archive-originals] [--force])")
+		fmt.Fprintln(stderr, "usage: ldgr import legacy --target PATH (--plan | --apply [--archive-originals] [--force] [--init])")
 		return 2
 	}
 	fs := newFlagSet("import legacy")
@@ -27,6 +27,7 @@ func RunImportCLI(args []string, stdout, stderr io.Writer) int {
 	applyFlag := fs.Bool("apply", false, "")
 	archive := fs.Bool("archive-originals", false, "")
 	force := fs.Bool("force", false, "")
+	init := fs.Bool("init", false, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -36,10 +37,43 @@ func RunImportCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	dir := resolveTarget(*target)
 
-	cfg, err := loadOrDefaultConfig(dir)
+	// Load config: for --plan, synthesize a stub if missing; for --apply, require it unless --init is set
+	cfg, found, err := loadConfigForImport(dir)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
+	}
+	if !found {
+		if *applyFlag && !*init {
+			fmt.Fprintln(stderr, "import legacy --apply needs a configured ledger; run `ldgr init` first or pass --init.")
+			return 1
+		}
+		if *applyFlag && *init {
+			// Bootstrap: run init first
+			store, _, regErr := DefaultRegistry()
+			if regErr != nil {
+				fmt.Fprintln(stderr, regErr)
+				return 1
+			}
+			if err := RunInit(dir, InitOpts{Slug: filepath.Base(dir)}, store); err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+			// Reload config after init
+			cfg, _, err = loadConfigForImport(dir)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+			if cfg.ProjectID == "" {
+				fmt.Fprintln(stderr, "import legacy: --init succeeded but config still missing; bailing.")
+				return 1
+			}
+		}
+		if *planFlag {
+			// For --plan (preview mode), synthesize a stub to allow inference
+			cfg = config.Default(filepath.Base(dir), "import-stub", "")
+		}
 	}
 
 	srcs, err := legacy.Scan(dir)
@@ -67,17 +101,22 @@ func RunImportCLI(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func loadOrDefaultConfig(dir string) (config.Config, error) {
+// loadConfigForImport returns the per-repo config and a boolean indicating
+// whether it was found on disk with a valid project_id. A missing config or
+// one with empty project_id returns (zero, false, nil) so the caller can
+// decide whether to refuse or to bootstrap with --init.
+func loadConfigForImport(dir string) (config.Config, bool, error) {
 	cfg, err := config.Load(filepath.Join(dir, "ledger", "config.json"))
-	if err != nil && !os.IsNotExist(err) {
-		return cfg, err
+	if err != nil {
+		if os.IsNotExist(err) {
+			return config.Config{}, false, nil
+		}
+		return config.Config{}, false, err
 	}
-	if err != nil || cfg.ProjectID == "" {
-		// Caller did not run init yet. Synthesize a temporary config so we can
-		// infer parents. The real init must follow `import legacy --apply`.
-		return config.Default(filepath.Base(dir), "import-stub", ""), nil
+	if cfg.ProjectID == "" {
+		return cfg, false, nil
 	}
-	return cfg, nil
+	return cfg, true, nil
 }
 
 func shrinkingTarget(plan legacy.Plan) bool {
