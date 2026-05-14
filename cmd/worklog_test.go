@@ -56,6 +56,9 @@ func TestWorklogAdd_WarnsWhenTicketNotAuditPass(t *testing.T) {
 	t.Setenv("LEDGER_AGENT", "codex")
 	add := `{"ticket":"W-1","parent_ticket":"BUG","role":"impl","status":"open","task":"do","scope":"repo","paths":[],"blocked_by":[]}`
 	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	// Transition to in_progress
+	inp := `{"ticket":"W-1","status":"in_progress"}`
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(inp), &bytes.Buffer{}, &bytes.Buffer{})
 	// Transition to audit_ready so worklog guidance will mention audit
 	evch := `{"ticket":"W-1","status":"audit_ready","evidence":["done"]}`
 	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(evch), &bytes.Buffer{}, &bytes.Buffer{})

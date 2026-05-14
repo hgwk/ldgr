@@ -2,11 +2,14 @@ package e2e
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hgwk/ldgr/internal/ledger"
 )
 
 func buildBinary(t *testing.T) string {
@@ -54,6 +57,7 @@ func TestSmoke_InitTicketWorklogVerify(t *testing.T) {
 		t.Fatalf("init: %s", se)
 	}
 
+	// Add ticket with status=open
 	ticketJSON := `{"ticket":"t1","parent_ticket":"ROOT","role":"impl","status":"open","task":"do thing","scope":"repo","paths":[],"blocked_by":[]}`
 	c := exec.Command(bin, "ticket", "add", "--target", work, "--json", "@-")
 	c.Env = append(os.Environ(), "LDGR_HOME="+home, "LEDGER_AGENT=codex")
@@ -62,12 +66,38 @@ func TestSmoke_InitTicketWorklogVerify(t *testing.T) {
 		t.Fatalf("ticket add: %v\n%s", err, out)
 	}
 
-	eventJSON := `{"ticket":"t1","status":"done","notes":"shipped"}`
+	// Transition to in_progress
+	inProgJSON := `{"ticket":"t1","status":"in_progress"}`
 	c = exec.Command(bin, "ticket", "event", "--target", work, "--json", "@-")
 	c.Env = append(os.Environ(), "LDGR_HOME="+home, "LEDGER_AGENT=codex")
-	c.Stdin = strings.NewReader(eventJSON)
+	c.Stdin = strings.NewReader(inProgJSON)
 	if out, err := c.CombinedOutput(); err != nil {
-		t.Fatalf("ticket event: %v\n%s", err, out)
+		t.Fatalf("ticket event in_progress: %v\n%s", err, out)
+	}
+
+	// Transition to audit_ready with evidence
+	auditReadyJSON := `{"ticket":"t1","status":"audit_ready","evidence":["go test ./..."]}`
+	c = exec.Command(bin, "ticket", "event", "--target", work, "--json", "@-")
+	c.Env = append(os.Environ(), "LDGR_HOME="+home, "LEDGER_AGENT=codex")
+	c.Stdin = strings.NewReader(auditReadyJSON)
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("ticket event audit_ready: %v\n%s", err, out)
+	}
+
+	// Look up the audit_ready row n so we can pass reviewed_n
+	rows, err := ledger.ReadRows(filepath.Join(work, "ledger", "tickets.jsonl"))
+	if err != nil {
+		t.Fatalf("read tickets.jsonl: %v", err)
+	}
+	auditN := int(rows[len(rows)-1]["n"].(float64))
+
+	// Audit-pass close
+	doneJSON := fmt.Sprintf(`{"ticket":"t1","role":"audit","status":"done","audit_result":"pass","evidence":["go test ./..."],"reviewed_n":%d}`, auditN)
+	c = exec.Command(bin, "ticket", "event", "--target", work, "--json", "@-")
+	c.Env = append(os.Environ(), "LDGR_HOME="+home, "LEDGER_AGENT=codex")
+	c.Stdin = strings.NewReader(doneJSON)
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("ticket event done: %v\n%s", err, out)
 	}
 
 	worklogJSON := `{"ticket":"t1","task":"impl","scope":"repo","result":"done","paths":[],"commands":[],"notes":""}`

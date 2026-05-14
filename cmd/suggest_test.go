@@ -3,8 +3,12 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hgwk/ldgr/internal/ledger"
 )
 
 func TestSuggestWorklog_RefusesBeforeAuditPass(t *testing.T) {
@@ -29,10 +33,25 @@ func TestSuggestWorklog_RefusesBeforeAuditPass(t *testing.T) {
 func TestSuggestWorklog_EmitsSkeletonAfterAuditPass(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
+	// Add: status=open
 	add := `{"ticket":"T-2","parent_ticket":"BUG","role":"impl","status":"open","task":"impl T-2","scope":"repo","paths":["src/x.go"],"blocked_by":[]}`
 	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
-	done := `{"ticket":"T-2","role":"audit","status":"done","audit_result":"pass","evidence":["go test ./..."]}`
-	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(done), &bytes.Buffer{}, &bytes.Buffer{})
+
+	// Transition to in_progress
+	inp := `{"ticket":"T-2","status":"in_progress"}`
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(inp), &bytes.Buffer{}, &bytes.Buffer{})
+
+	// Transition to audit_ready with evidence
+	ready := `{"ticket":"T-2","status":"audit_ready","evidence":["go test ./..."]}`
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(ready), &bytes.Buffer{}, &bytes.Buffer{})
+
+	// Look up the audit_ready row n so we can pass reviewed_n
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	auditN := int(rows[len(rows)-1]["n"].(float64))
+
+	// Audit-pass close
+	pass := fmt.Sprintf(`{"ticket":"T-2","role":"audit","status":"done","audit_result":"pass","evidence":["go test ./..."],"reviewed_n":%d}`, auditN)
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &bytes.Buffer{})
 
 	var out bytes.Buffer
 	if code := RunSuggestCLI([]string{"worklog", "--target", target, "--ticket", "T-2"}, &out, &bytes.Buffer{}); code != 0 {
