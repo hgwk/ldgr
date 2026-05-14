@@ -79,10 +79,14 @@ Long term:
 10. Tree and Worklog pages get the subset of filters that fit their jobs:
    - Tree: parent/workstream, kind, priority, status/stage.
    - Worklog: ticket text search, agent, date/order.
-11. `ldgr next` project-level guidance, once implemented, sorts by priority before age within the same recommendation bucket.
-12. `ldgr suggest plan --parent PARENT` and/or future project-aware guidance use `kind=plan`.
-13. No new ledger files.
-14. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
+11. Long VCT content does not grow the whole page indefinitely:
+   - app shell is constrained to the viewport height;
+   - page body, Kanban columns, Tree lists, Worklog table, and drawer body scroll internally;
+   - toolbar/sidebar/header remain stable while content scrolls.
+12. `ldgr next` project-level guidance, once implemented, sorts by priority before age within the same recommendation bucket.
+13. `ldgr suggest plan --parent PARENT` and/or future project-aware guidance use `kind=plan`.
+14. No new ledger files.
+15. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ---
 
@@ -182,6 +186,10 @@ Rows:
 - [ ] Persist filter/sort state in URL query params, e.g. `?page=kanban&priority=P1&kind=task&sort=priority`.
 - [ ] Tree page supports parent/workstream, kind, priority, and status/stage filters.
 - [ ] Worklog page supports ticket text search, agent filter, and newest/oldest sort.
+- [ ] Constrain the app shell to viewport height (`100dvh` or equivalent) and make content panes scroll internally.
+- [ ] Kanban columns have max height relative to viewport and scroll their card lists without moving the whole app shell.
+- [ ] Tree, Worklog, Insights, and ticket drawer bodies use internal scroll regions for long content.
+- [ ] Toolbar/sidebar/header remain visible and do not jump when lists grow.
 - [ ] Check no card text overlap at mobile widths.
 - [ ] Commit `feat(viewer): filter and sort ticket taxonomy`.
 
@@ -219,6 +227,8 @@ Rows:
 - [ ] Priority affects what humans and agents see first.
 - [ ] Users can narrow VCT to P0/P1, blocked, verify, kind, parent/workstream, and agent without leaving the page.
 - [ ] Filter/sort state survives refresh and can be shared as a URL.
+- [ ] Long ticket lists scroll inside their panels instead of stretching the whole browser page.
+- [ ] The first viewport remains a control tower, not a long document.
 - [ ] Plans/issues/tasks are distinguishable without new files.
 - [ ] Existing ledgers remain readable.
 - [ ] Missing taxonomy on historical rows does not block normal verify.
