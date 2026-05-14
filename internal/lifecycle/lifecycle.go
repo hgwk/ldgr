@@ -64,6 +64,8 @@ func Validate(row ledger.Row) *Violation {
 
 // isAuditPassClose recognises the only legal `status=done` path:
 // role=audit AND audit_result=pass AND non-empty evidence array.
+// Evidence entries that are not non-empty strings are ignored; the audit
+// passes if at least one trimmed-non-empty string is present.
 func isAuditPassClose(row ledger.Row) bool {
 	if r, _ := row["role"].(string); r != "audit" {
 		return false
@@ -84,17 +86,10 @@ func isAuditPassClose(row ledger.Row) bool {
 	return false
 }
 
-// isCorrectionRow recognises explicit correction/cancellation rows that
-// bypass the audit gate: any row carrying invalidates_n, or a role=ops
-// cancellation.
+// isCorrectionRow recognises explicit correction rows that bypass the audit
+// gate: rows carrying `invalidates_n`. Cancellation rows do not need an
+// override since Validate accepts status=cancelled upstream.
 func isCorrectionRow(row ledger.Row) bool {
-	if _, hasInv := row["invalidates_n"]; hasInv {
-		return true
-	}
-	if r, _ := row["role"].(string); r == "ops" {
-		if s, _ := row["status"].(string); s == "cancelled" {
-			return true
-		}
-	}
-	return false
+	_, hasInv := row["invalidates_n"]
+	return hasInv
 }

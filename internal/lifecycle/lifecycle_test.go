@@ -91,10 +91,12 @@ func TestValidate_AcceptsAuditPassWithEvidence(t *testing.T) {
 	}
 }
 
-func TestValidate_AcceptsCancellationOverride(t *testing.T) {
+// status=cancelled is always accepted regardless of role; ops cancellation
+// is therefore just one expression of that rule.
+func TestValidate_AcceptsOpsCancellation(t *testing.T) {
 	v := Validate(row(map[string]any{"status": "cancelled", "role": "ops"}))
 	if v != nil {
-		t.Fatalf("ops cancellation should pass, got %v", v)
+		t.Fatalf("status=cancelled should pass, got %v", v)
 	}
 }
 
@@ -120,5 +122,12 @@ func TestValidate_ErrorImplementsError(t *testing.T) {
 	}
 	if v.Error() == "" {
 		t.Fatal("Error() should be non-empty")
+	}
+}
+
+func TestValidate_AcceptsBlocked(t *testing.T) {
+	v := Validate(row(map[string]any{"status": "blocked", "blocked_by": []any{"X-1"}}))
+	if v != nil {
+		t.Fatalf("expected accept, got %v", v)
 	}
 }
