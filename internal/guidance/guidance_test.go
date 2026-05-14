@@ -55,7 +55,10 @@ func TestCompute_BlockedListsUnresolved(t *testing.T) {
 	if len(g.Warnings) == 0 {
 		t.Fatalf("expected warnings, got none")
 	}
-	joined := strings.Join(g.Warnings, " ")
+	joined := ""
+	for _, w := range g.Warnings {
+		joined += " " + w.Message
+	}
 	if !strings.Contains(joined, "DEP-1") || !strings.Contains(joined, "DEP-2") {
 		t.Fatalf("warnings should name each blocker: %v", g.Warnings)
 	}
@@ -128,6 +131,43 @@ func TestRenderJSON_RoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"status": "in_progress"`) && !strings.Contains(string(data), `"status":"in_progress"`) {
 		t.Fatalf("json missing status field:\n%s", data)
+	}
+}
+
+func TestCompute_WeakDoneEmitsCriticalCode(t *testing.T) {
+	g := Compute(ticket(map[string]any{"status": "done"}), nil) // no audit_result=pass
+	if len(g.Warnings) == 0 {
+		t.Fatalf("expected warning")
+	}
+	found := false
+	for _, w := range g.Warnings {
+		if w.Code == "WEAK_DONE" && w.Severity == "critical" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected WEAK_DONE/critical, got %+v", g.Warnings)
+	}
+}
+
+func TestCompute_BlockedNoBlockersEmitsWarningCode(t *testing.T) {
+	g := Compute(ticket(map[string]any{"status": "blocked", "blocked_by": []any{}}), nil)
+	found := false
+	for _, w := range g.Warnings {
+		if w.Code == "BLOCKED_NO_BLOCKERS" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected BLOCKED_NO_BLOCKERS code, got %+v", g.Warnings)
+	}
+}
+
+func TestRenderText_WarningIncludesCodeAndSeverity(t *testing.T) {
+	g := Compute(ticket(map[string]any{"status": "done"}), nil)
+	text := RenderText(g)
+	if !strings.Contains(text, "WEAK_DONE") || !strings.Contains(text, "critical") {
+		t.Fatalf("rendered text should mention code + severity: %s", text)
 	}
 }
 

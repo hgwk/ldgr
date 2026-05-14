@@ -23,16 +23,23 @@ var allowedNextTransitions = map[string][]string{
 	"cancelled":         nil,
 }
 
+// Warning represents a severity-coded warning for a ticket.
+type Warning struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"` // critical | warning | hint
+	Message  string `json:"message"`
+}
+
 // Guidance is the wire shape for both stderr text rendering and the `next` JSON output.
 type Guidance struct {
-	Ticket            string   `json:"ticket"`
-	Status            string   `json:"status"`
-	Summary           string   `json:"summary"`
-	Actions           []string `json:"actions"`
-	Warnings          []string `json:"warnings"`
-	SuggestedCommands []string `json:"suggested_commands"`
-	SuggestedJSON     []any    `json:"suggested_json"`
-	NextTransitions   []string `json:"next_transitions"`
+	Ticket            string    `json:"ticket"`
+	Status            string    `json:"status"`
+	Summary           string    `json:"summary"`
+	Actions           []string  `json:"actions"`
+	Warnings          []Warning `json:"warnings"`
+	SuggestedCommands []string  `json:"suggested_commands"`
+	SuggestedJSON     []any     `json:"suggested_json"`
+	NextTransitions   []string  `json:"next_transitions"`
 }
 
 // Compute derives guidance for the latest ticket row.
@@ -64,10 +71,18 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 		g.Actions = []string{"Do not implement until at least one blocker clears."}
 		blockers := stringSliceField(latest, "blocked_by")
 		if len(blockers) == 0 {
-			g.Warnings = append(g.Warnings, "status=blocked but blocked_by is empty; add the actual blocker ticket ids")
+			g.Warnings = append(g.Warnings, Warning{
+				Code:     "BLOCKED_NO_BLOCKERS",
+				Severity: "warning",
+				Message:  "status=blocked but blocked_by is empty; add the actual blocker ticket ids",
+			})
 		} else {
 			for _, b := range blockers {
-				g.Warnings = append(g.Warnings, fmt.Sprintf("blocked by %s", b))
+				g.Warnings = append(g.Warnings, Warning{
+					Code:     "BLOCKED_BY",
+					Severity: "warning",
+					Message:  fmt.Sprintf("blocked by %s", b),
+				})
 			}
 			g.SuggestedCommands = append(g.SuggestedCommands, fmt.Sprintf("ldgr next --ticket %s", blockers[0]))
 		}
@@ -108,7 +123,13 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 			}
 		} else {
 			g.Summary = "marked done without audit evidence"
-			g.Warnings = []string{"closure is weak: no audit pass row was found"}
+			g.Warnings = []Warning{
+				{
+					Code:     "WEAK_DONE",
+					Severity: "critical",
+					Message:  "closure is weak: no audit pass row was found",
+				},
+			}
 			g.Actions = []string{"Append a role=audit row with audit_result=pass and evidence before treating this as shipped."}
 			g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
 			g.SuggestedJSON = []any{overlay(latest, map[string]any{
@@ -120,7 +141,13 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 		g.Actions = []string{"Explain the cancellation in `notes`. Do not append a worklog unless cancellation itself is the delivery."}
 	default:
 		g.Summary = "unknown status"
-		g.Warnings = []string{fmt.Sprintf("unrecognized status: %q", g.Status)}
+		g.Warnings = []Warning{
+			{
+				Code:     "INVALID_STATUS",
+				Severity: "warning",
+				Message:  fmt.Sprintf("unrecognized status: %q", g.Status),
+			},
+		}
 	}
 	// Populate NextTransitions from the allowed transitions map.
 	g.NextTransitions = allowedNextTransitions[g.Status]
@@ -141,7 +168,7 @@ func RenderText(g Guidance) string {
 	if len(g.Warnings) > 0 {
 		b.WriteString("\nWarnings:\n")
 		for _, w := range g.Warnings {
-			fmt.Fprintf(&b, "- %s\n", w)
+			fmt.Fprintf(&b, "- [%s/%s] %s\n", w.Severity, w.Code, w.Message)
 		}
 	}
 	if len(g.SuggestedCommands) > 0 {
