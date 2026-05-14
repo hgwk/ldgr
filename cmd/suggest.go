@@ -15,16 +15,17 @@ func init() {
 	Commands["suggest"] = RunSuggestCLI
 }
 
-// RunSuggestCLI implements `ldgr suggest worklog|commit --ticket ID`.
+// RunSuggestCLI implements `ldgr suggest worklog|commit --ticket ID [--allow-unaudited]`.
 func RunSuggestCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ldgr suggest <worklog|commit> --ticket ID")
+		fmt.Fprintln(stderr, "usage: ldgr suggest <worklog|commit> --ticket ID [--allow-unaudited]")
 		return 2
 	}
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("suggest " + sub)
 	target := fs.String("target", "", "")
 	ticket := fs.String("ticket", "", "")
+	allowUnaudited := fs.Bool("allow-unaudited", false, "")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -49,17 +50,28 @@ func RunSuggestCLI(args []string, stdout, stderr io.Writer) int {
 	case "worklog":
 		return suggestWorklog(latest, worklog, stdout)
 	case "commit":
-		return suggestCommit(latest, stdout)
+		return suggestCommit(latest, worklog, *allowUnaudited, stdout)
 	default:
 		fmt.Fprintf(stderr, "unknown suggest subcommand: %s\n", sub)
 		return 2
 	}
 }
 
+func ticketIsAuditPassDone(latest ledger.Row) bool {
+	if s, _ := latest["status"].(string); s != "done" {
+		return false
+	}
+	if r, _ := latest["role"].(string); r != "audit" {
+		return false
+	}
+	if ar, _ := latest["audit_result"].(string); ar != "pass" {
+		return false
+	}
+	return true
+}
+
 func suggestWorklog(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) int {
-	status, _ := latest["status"].(string)
-	auditResult, _ := latest["audit_result"].(string)
-	if status != "done" || auditResult != "pass" {
+	if !ticketIsAuditPassDone(latest) {
 		g := guidance.Compute(latest, worklog)
 		fmt.Fprint(stdout, guidance.RenderText(g))
 		return 0
@@ -81,7 +93,15 @@ func suggestWorklog(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) i
 	return 0
 }
 
-func suggestCommit(latest ledger.Row, stdout io.Writer) int {
+func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, stdout io.Writer) int {
+	if !allowUnaudited && !ticketIsAuditPassDone(latest) {
+		g := guidance.Compute(latest, worklog)
+		fmt.Fprint(stdout, guidance.RenderText(g))
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Run with --allow-unaudited to emit the commit scaffold anyway.")
+		return 0
+	}
+
 	commitType := commitTypeFromCategory(stringField(latest, "category"))
 	scope := strings.ToLower(stringField(latest, "parent_ticket"))
 	if scope == "" || scope == "root" {
