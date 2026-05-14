@@ -479,33 +479,76 @@ async function renderTree(root) {
   const t = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/tickets");
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Tree" }));
-  const tree = t.tree || [];
-  if (tree.length === 0) {
+
+  // Flatten the buckets into one list of latest rows.
+  const all = [];
+  for (const bucket of (t.tree || [])) {
+    for (const row of (bucket.tickets || [])) {
+      all.push({ row, parent: bucket.parent });
+    }
+  }
+  if (all.length === 0) {
     root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
     return;
   }
-  for (const bucket of tree) {
-    root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: bucket.parent || "(no parent)" })));
-    const table = el("table", { class: "dense" });
-    table.appendChild(el("thead", null, el("tr", null,
-      el("th", { text: "Ticket" }), el("th", { text: "Tags" }), el("th", { text: "Status" }), el("th", { text: "Task" }), el("th", { text: "TS" })
-    )));
-    const tb = el("tbody");
-    for (const t of (bucket.tickets || [])) {
-      const badges = el("span");
-      if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + (t.priority||"").toLowerCase(), text: t.priority || "" }));
-      if (t.kind && t.kind !== "task") badges.appendChild(el("span", { class: "badge", text: t.kind || "" }));
-      tb.appendChild(el("tr", null,
-        el("td", { class: "mono", text: t.ticket }),
-        el("td", null, badges),
-        el("td", null, el("span", { class: "pill " + (t.status || ""), text: t.status || "" })),
-        el("td", { text: t.task || "" }),
-        el("td", { text: fmtTS(t.ts) }),
-      ));
+
+  // Build maps: id → row, and children of each parent (either workstream or ticket id).
+  const byId = new Map();
+  for (const item of all) byId.set(item.row.ticket, item);
+  const childrenOf = new Map();
+  const workstreamBuckets = new Map();
+  for (const item of all) {
+    const p = item.row.parent_ticket || item.parent || "—";
+    if (byId.has(p)) {
+      // parent is itself a ticket id → nested.
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p).push(item);
+    } else {
+      // parent is a workstream label.
+      if (!workstreamBuckets.has(p)) workstreamBuckets.set(p, []);
+      workstreamBuckets.get(p).push(item);
     }
-    table.appendChild(tb);
-    root.appendChild(table);
   }
+
+  // A ticket that has a ticket-parent shouldn't ALSO appear at the top of its
+  // workstream bucket — exclude such tickets from workstream listings.
+  for (const [bucket, items] of workstreamBuckets) {
+    workstreamBuckets.set(bucket, items.filter((it) => !byId.has(it.row.parent_ticket)));
+  }
+
+  // Render each workstream bucket as a section, with each top-level ticket
+  // optionally expanding into its nested children.
+  const sortedBuckets = [...workstreamBuckets.keys()].sort();
+  for (const parent of sortedBuckets) {
+    const items = workstreamBuckets.get(parent);
+    if (items.length === 0) continue;
+    root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: parent })));
+    const list = el("div", { class: "tree-list" });
+    for (const item of items) {
+      list.appendChild(renderTreeNode(item.row, childrenOf, byId, 0));
+    }
+    root.appendChild(list);
+  }
+}
+
+function renderTreeNode(row, childrenOf, byId, depth) {
+  const wrap = el("div", { class: "tree-node", style: "margin-left: " + (depth * 16) + "px" });
+  const head = el("div", { class: "tree-node-head", onclick: () => openDrawer(row.ticket) });
+  head.appendChild(el("span", { class: "mono", text: row.ticket }));
+  if (row.priority) head.appendChild(el("span", { class: "badge badge-prio badge-prio-" + (row.priority||"").toLowerCase(), text: row.priority }));
+  if (row.kind && row.kind !== "task") head.appendChild(el("span", { class: "badge", text: row.kind }));
+  head.appendChild(el("span", { class: "pill " + (row.status || ""), text: row.status || "" }));
+  head.appendChild(el("span", { class: "tree-task", text: row.task || "" }));
+  head.appendChild(el("span", { class: "tree-ts muted", text: fmtTS(row.ts) }));
+  wrap.appendChild(head);
+
+  const kids = childrenOf.get(row.ticket) || [];
+  // Sort children by ts desc.
+  kids.sort((a, b) => (b.row.ts || "").localeCompare(a.row.ts || ""));
+  for (const child of kids) {
+    wrap.appendChild(renderTreeNode(child.row, childrenOf, byId, depth + 1));
+  }
+  return wrap;
 }
 
 /* Worklog */

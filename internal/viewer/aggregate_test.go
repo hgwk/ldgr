@@ -478,3 +478,18 @@ func TestDashboard_KindDistribution(t *testing.T) {
 		t.Fatalf("expected issue=1 second, got %+v", d.Kind[1])
 	}
 }
+
+func TestTree_PreservesParentTicketAsBucketLabel(t *testing.T) {
+	rows := []ledger.Row{
+		{"n": float64(1), "ticket": "ROOT-1", "status": "open", "ts": "2026-05-14T10:00:00Z", "parent_ticket": "BUG"},
+		{"n": float64(2), "ticket": "CHILD-1", "status": "open", "ts": "2026-05-14T10:01:00Z", "parent_ticket": "ROOT-1"},
+	}
+	buckets := Tree(rows)
+	if len(buckets) != 2 {
+		t.Fatalf("expected 2 buckets (BUG + ROOT-1), got %d", len(buckets))
+	}
+	// The bucket labels are alphabetical.
+	if buckets[0].Parent != "BUG" || buckets[1].Parent != "ROOT-1" {
+		t.Fatalf("unexpected bucket order: %+v", buckets)
+	}
+}
