@@ -371,3 +371,21 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 @media (max-width: 540px) {
   .kanban-board { grid-template-columns: 1fr; }
 }
+
+.kanban-bar {
+  display: flex; gap: var(--space-2); margin-bottom: var(--space-3);
+}
+.kanban-bar select {
+  font: inherit;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.badge-prio { font-weight: 600; }
+.badge-prio-p0 { color: white; background: #dc2626; border-color: #dc2626; }
+.badge-prio-p1 { color: white; background: #ea580c; border-color: #ea580c; }
+.badge-prio-p2 { color: var(--muted); }
+.badge-prio-p3 { color: var(--muted); opacity: 0.7; }

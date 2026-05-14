@@ -357,6 +357,8 @@ type Dashboard struct {
 	Audit    AuditPipeline    `json:"audit"`
 	Health   DeliveryHealth   `json:"health"`
 	Recent   []RecentItem     `json:"recent"`
+	Priority PriorityCounts   `json:"priority"`
+	Kind     []KindCount      `json:"kind"`
 }
 
 type Progress struct {
@@ -395,6 +397,20 @@ type RecentItem struct {
 	Status string `json:"status,omitempty"`
 	Task   string `json:"task,omitempty"`
 	Result string `json:"result,omitempty"`
+}
+
+// PriorityCounts tallies active priority levels.
+type PriorityCounts struct {
+	P0 int `json:"p0"`
+	P1 int `json:"p1"`
+	P2 int `json:"p2"`
+	P3 int `json:"p3"`
+}
+
+// KindCount represents the count of tickets of a given kind.
+type KindCount struct {
+	Kind  string `json:"kind"`
+	Count int    `json:"count"`
 }
 
 // activeStatuses lists ticket statuses counted as "active" for progress math.
@@ -586,12 +602,62 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 		recent = append(recent, s.item)
 	}
 
+	// Priority: only count active (open/in_progress/blocked/audit_ready/changes_requested).
+	var pc PriorityCounts
+	for _, t := range latest {
+		s, _ := t["status"].(string)
+		if !activeStatuses[s] {
+			continue
+		}
+		p, _ := t["priority"].(string)
+		switch p {
+		case "P0":
+			pc.P0++
+		case "P1":
+			pc.P1++
+		case "P2":
+			pc.P2++
+		case "P3":
+			pc.P3++
+		}
+	}
+
+	// Kind distribution: count ALL latest tickets by kind, sort by count desc, kind asc.
+	byKind := map[string]int{}
+	for _, t := range latest {
+		k, _ := t["kind"].(string)
+		if k == "" {
+			k = "—"
+		}
+		byKind[k]++
+	}
+	type kvk struct {
+		k string
+		v int
+	}
+	var arr []kvk
+	for k, v := range byKind {
+		arr = append(arr, kvk{k, v})
+	}
+	sort.Slice(arr, func(i, j int) bool {
+		if arr[i].v != arr[j].v {
+			return arr[i].v > arr[j].v
+		}
+		return arr[i].k < arr[j].k
+	})
+	var kinds []KindCount
+	for _, p := range arr {
+		kinds = append(kinds, KindCount{Kind: p.k, Count: p.v})
+	}
+
 	return Dashboard{
 		Progress: Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
 		Parents:  parents,
 		Audit:    AuditPipeline{AuditReady: auditReady, ChangesRequested: changesReq, WeakDone: weakDone},
 		Health:   DeliveryHealth{ClosedWithoutWorklog: closed, OrphanWorklog: orphan, Invalidated: invalidated, MissingEvidence: missingEv},
 		Recent:   recent,
+		Priority: pc,
+		Kind:     kinds,
 	}
 }
 

@@ -4,6 +4,8 @@ const POLL_MS = 5000;
 let state = {
   projectId: null,
   page: "dashboard",
+  kanbanFilter: { priority: "", kind: "" },
+  kanbanSort: "ts",
 };
 let pollTimer = null;
 
@@ -105,6 +107,9 @@ function syncURL() {
   const params = new URLSearchParams();
   if (state.projectId) params.set("project", state.projectId);
   if (state.page && state.page !== "dashboard") params.set("page", state.page);
+  if (state.kanbanFilter.priority) params.set("priority", state.kanbanFilter.priority);
+  if (state.kanbanFilter.kind) params.set("kind", state.kanbanFilter.kind);
+  if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
   const qs = params.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
 }
@@ -182,6 +187,25 @@ async function renderDashboard(root) {
   ));
   root.appendChild(band);
 
+  // Priority band
+  const prio = d.priority || {};
+  const pBand = el("div", { class: "metric-band" });
+  const pTotal = (prio.p0||0) + (prio.p1||0) + (prio.p2||0) + (prio.p3||0);
+  pBand.appendChild(el("div", { class: "metric" },
+    el("div", { class: "label", text: "Active priorities" }),
+    el("div", { class: "value", text: String(pTotal) }),
+    el("div", { class: "delta", text: "P0 " + (prio.p0||0) + " · P1 " + (prio.p1||0) + " · P2 " + (prio.p2||0) + " · P3 " + (prio.p3||0) }),
+  ));
+  // Kind distribution as a single tile (text only).
+  const kinds = d.kind || [];
+  const kindText = kinds.length === 0 ? "—" : kinds.map(k => k.kind + ": " + k.count).join(" · ");
+  pBand.appendChild(el("div", { class: "metric" },
+    el("div", { class: "label", text: "Kind distribution" }),
+    el("div", { class: "value", text: String(kinds.reduce((s,k)=>s+k.count, 0)) }),
+    el("div", { class: "delta", text: kindText }),
+  ));
+  root.appendChild(pBand);
+
   // Parents table.
   root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: "Parent completion" })));
   const parents = d.parents || [];
@@ -239,6 +263,29 @@ async function renderKanban(root) {
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Kanban" }));
 
+  // Filter bar
+  const bar = el("div", { class: "kanban-bar" });
+  const prioSel = el("select", { onchange: (e) => { state.kanbanFilter.priority = e.target.value; syncURL(); loadPage(); } });
+  for (const v of ["", "P0", "P1", "P2", "P3"]) {
+    const opt = el("option", { value: v, text: v ? "Priority " + v : "All priorities" });
+    if (v === state.kanbanFilter.priority) opt.selected = true;
+    prioSel.appendChild(opt);
+  }
+  const kindSel = el("select", { onchange: (e) => { state.kanbanFilter.kind = e.target.value; syncURL(); loadPage(); } });
+  for (const v of ["", "plan", "issue", "task", "audit", "ops"]) {
+    const opt = el("option", { value: v, text: v ? "Kind " + v : "All kinds" });
+    if (v === state.kanbanFilter.kind) opt.selected = true;
+    kindSel.appendChild(opt);
+  }
+  const sortSel = el("select", { onchange: (e) => { state.kanbanSort = e.target.value; syncURL(); loadPage(); } });
+  for (const v of ["ts", "priority"]) {
+    const opt = el("option", { value: v, text: "Sort by " + v });
+    if (v === state.kanbanSort) opt.selected = true;
+    sortSel.appendChild(opt);
+  }
+  bar.appendChild(prioSel); bar.appendChild(kindSel); bar.appendChild(sortSel);
+  root.appendChild(bar);
+
   const cols = k.columns || [];
   if (cols.every((c) => (c.tickets || []).length === 0)) {
     root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
@@ -250,11 +297,22 @@ async function renderKanban(root) {
     const colEl = el("div", { class: "kanban-col" });
     const head = el("div", { class: "kanban-col-head" });
     head.appendChild(el("span", { class: "kanban-col-title", text: col.title }));
-    head.appendChild(el("span", { class: "kanban-col-count", text: String((col.tickets || []).length) }));
+
+    let tickets = (col.tickets || []).filter((t) => {
+      if (state.kanbanFilter.priority && (t.priority || "") !== state.kanbanFilter.priority) return false;
+      if (state.kanbanFilter.kind && (t.kind || "") !== state.kanbanFilter.kind) return false;
+      return true;
+    });
+    if (state.kanbanSort === "priority") {
+      const rank = { "P0": 0, "P1": 1, "P2": 2, "P3": 3 };
+      tickets = tickets.slice().sort((a, b) => (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9));
+    }
+
+    head.appendChild(el("span", { class: "kanban-col-count", text: String(tickets.length) }));
     colEl.appendChild(head);
 
     const list = el("div", { class: "kanban-col-list" });
-    for (const t of (col.tickets || [])) {
+    for (const t of tickets) {
       list.appendChild(kanbanCard(t));
     }
     colEl.appendChild(list);
@@ -275,6 +333,8 @@ function kanbanCard(t) {
   card.appendChild(task);
 
   const badges = el("div", { class: "kanban-badges" });
+  if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + t.priority.toLowerCase(), text: t.priority }));
+  if (t.kind && t.kind !== "task") badges.appendChild(el("span", { class: "badge", text: t.kind }));
   if (t.category) badges.appendChild(el("span", { class: "badge", text: t.category }));
   if (t.claimed_by) badges.appendChild(el("span", { class: "badge", text: "@" + t.claimed_by }));
   const blocked = (t.blocked_by || []).filter((s) => s);
@@ -428,12 +488,16 @@ async function renderTree(root) {
     root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: bucket.parent || "(no parent)" })));
     const table = el("table", { class: "dense" });
     table.appendChild(el("thead", null, el("tr", null,
-      el("th", { text: "Ticket" }), el("th", { text: "Status" }), el("th", { text: "Task" }), el("th", { text: "TS" })
+      el("th", { text: "Ticket" }), el("th", { text: "Tags" }), el("th", { text: "Status" }), el("th", { text: "Task" }), el("th", { text: "TS" })
     )));
     const tb = el("tbody");
     for (const t of (bucket.tickets || [])) {
+      const badges = el("span");
+      if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + (t.priority||"").toLowerCase(), text: t.priority || "" }));
+      if (t.kind && t.kind !== "task") badges.appendChild(el("span", { class: "badge", text: t.kind || "" }));
       tb.appendChild(el("tr", null,
         el("td", { class: "mono", text: t.ticket }),
+        el("td", null, badges),
         el("td", null, el("span", { class: "pill " + (t.status || ""), text: t.status || "" })),
         el("td", { text: t.task || "" }),
         el("td", { text: fmtTS(t.ts) }),
@@ -515,6 +579,9 @@ function startPolling() {
   const params = new URLSearchParams(location.search);
   if (params.get("project")) state.projectId = params.get("project");
   if (params.get("page")) state.page = params.get("page");
+  if (params.get("priority")) state.kanbanFilter.priority = params.get("priority");
+  if (params.get("kind")) state.kanbanFilter.kind = params.get("kind");
+  if (params.get("sort")) state.kanbanSort = params.get("sort");
   bind();
   document.querySelectorAll("#page-nav li").forEach((li) => {
     li.classList.toggle("active", li.dataset.page === state.page);

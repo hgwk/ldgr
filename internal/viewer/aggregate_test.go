@@ -439,3 +439,42 @@ func equalSet(a, b []string) bool {
 	}
 	return true
 }
+
+func TestDashboard_PriorityCountsActiveOnly(t *testing.T) {
+	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	tickets := []ledger.Row{
+		{"n": float64(1), "ticket": "P0A", "status": "open", "priority": "P0", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{}},
+		{"n": float64(2), "ticket": "P0D", "status": "done", "priority": "P0", "audit_result": "pass", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z"},
+		{"n": float64(3), "ticket": "P1A", "status": "in_progress", "priority": "P1", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{}},
+		{"n": float64(4), "ticket": "P2A", "status": "blocked", "priority": "P2", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{"X"}},
+	}
+	d := BuildDashboard(tickets, nil, now)
+	if d.Priority.P0 != 1 {
+		t.Fatalf("P0 active expected 1, got %d", d.Priority.P0)
+	}
+	if d.Priority.P1 != 1 {
+		t.Fatalf("P1 expected 1, got %d", d.Priority.P1)
+	}
+	if d.Priority.P2 != 1 {
+		t.Fatalf("P2 expected 1, got %d", d.Priority.P2)
+	}
+}
+
+func TestDashboard_KindDistribution(t *testing.T) {
+	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	tickets := []ledger.Row{
+		{"n": float64(1), "ticket": "A", "status": "open", "kind": "task", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{}},
+		{"n": float64(2), "ticket": "B", "status": "open", "kind": "task", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{}},
+		{"n": float64(3), "ticket": "C", "status": "open", "kind": "issue", "parent_ticket": "P", "ts": "2026-05-14T10:00:00Z", "blocked_by": []any{}},
+	}
+	d := BuildDashboard(tickets, nil, now)
+	if len(d.Kind) != 2 {
+		t.Fatalf("expected 2 kinds, got %d (%+v)", len(d.Kind), d.Kind)
+	}
+	if d.Kind[0].Kind != "task" || d.Kind[0].Count != 2 {
+		t.Fatalf("expected task=2 first, got %+v", d.Kind[0])
+	}
+	if d.Kind[1].Kind != "issue" || d.Kind[1].Count != 1 {
+		t.Fatalf("expected issue=1 second, got %+v", d.Kind[1])
+	}
+}
