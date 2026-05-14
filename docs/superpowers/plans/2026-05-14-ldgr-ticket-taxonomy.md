@@ -73,10 +73,16 @@ Long term:
    - open P0/P1 count
    - blocked P0/P1 count
    - plan/issue/task counts
-7. `ldgr next` project-level guidance, once implemented, sorts by priority before age within the same recommendation bucket.
-8. `ldgr suggest plan --parent PARENT` and/or future project-aware guidance use `kind=plan`.
-9. No new ledger files.
-10. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
+7. VCT Kanban includes user-facing filters for priority, kind, status/stage, parent/workstream, agent/claim, blocked-only, and evidence state.
+8. VCT Kanban includes user-facing sort controls for priority, updated time, oldest first, parent/workstream, blocked-first, and missing-evidence-first.
+9. Filter/sort state is encoded in the URL query string and survives refresh/share links.
+10. Tree and Worklog pages get the subset of filters that fit their jobs:
+   - Tree: parent/workstream, kind, priority, status/stage.
+   - Worklog: ticket text search, agent, date/order.
+11. `ldgr next` project-level guidance, once implemented, sorts by priority before age within the same recommendation bucket.
+12. `ldgr suggest plan --parent PARENT` and/or future project-aware guidance use `kind=plan`.
+13. No new ledger files.
+14. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ---
 
@@ -158,9 +164,26 @@ Rows:
 
 - [ ] Kanban cards show priority badge and kind badge.
 - [ ] Dashboard renders P0/P1 and kind distribution metrics.
-- [ ] Optional filter controls for priority/kind if it can stay lightweight.
+- [ ] Add compact Kanban toolbar filters:
+  - priority: `All | P0 | P1 | P2 | P3`
+  - kind: `All | plan | issue | task | audit | ops`
+  - stage/status: `All | Plan | Implement | Verify | Complete | blocked | changes_requested`
+  - parent/workstream
+  - agent/claimed_by
+  - blocked only
+  - evidence: `All | has evidence | missing evidence`
+- [ ] Add Kanban sort menu:
+  - priority
+  - recently updated
+  - oldest first
+  - parent/workstream
+  - blocked first
+  - missing evidence first
+- [ ] Persist filter/sort state in URL query params, e.g. `?page=kanban&priority=P1&kind=task&sort=priority`.
+- [ ] Tree page supports parent/workstream, kind, priority, and status/stage filters.
+- [ ] Worklog page supports ticket text search, agent filter, and newest/oldest sort.
 - [ ] Check no card text overlap at mobile widths.
-- [ ] Commit `feat(viewer): show ticket taxonomy in control tower`.
+- [ ] Commit `feat(viewer): filter and sort ticket taxonomy`.
 
 ### Task 5: tree semantics polish
 
@@ -194,6 +217,8 @@ Rows:
 ## Self-Review Checklist
 
 - [ ] Priority affects what humans and agents see first.
+- [ ] Users can narrow VCT to P0/P1, blocked, verify, kind, parent/workstream, and agent without leaving the page.
+- [ ] Filter/sort state survives refresh and can be shared as a URL.
 - [ ] Plans/issues/tasks are distinguishable without new files.
 - [ ] Existing ledgers remain readable.
 - [ ] Missing taxonomy on historical rows does not block normal verify.
