@@ -11,6 +11,18 @@ import (
 	"github.com/hgwk/ldgr/internal/ledger"
 )
 
+// allowedNextTransitions defines the valid state transitions for each status.
+var allowedNextTransitions = map[string][]string{
+	"":                  {"open", "in_progress"},
+	"open":              {"in_progress", "blocked", "cancelled"},
+	"in_progress":       {"audit_ready", "blocked", "cancelled"},
+	"blocked":           {"in_progress", "cancelled"},
+	"audit_ready":       {"done", "changes_requested", "cancelled"},
+	"changes_requested": {"in_progress", "open", "cancelled"},
+	"done":              nil,
+	"cancelled":         nil,
+}
+
 // Guidance is the wire shape for both stderr text rendering and the `next` JSON output.
 type Guidance struct {
 	Ticket            string   `json:"ticket"`
@@ -20,6 +32,7 @@ type Guidance struct {
 	Warnings          []string `json:"warnings"`
 	SuggestedCommands []string `json:"suggested_commands"`
 	SuggestedJSON     []any    `json:"suggested_json"`
+	NextTransitions   []string `json:"next_transitions"`
 }
 
 // Compute derives guidance for the latest ticket row.
@@ -109,6 +122,8 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 		g.Summary = "unknown status"
 		g.Warnings = []string{fmt.Sprintf("unrecognized status: %q", g.Status)}
 	}
+	// Populate NextTransitions from the allowed transitions map.
+	g.NextTransitions = allowedNextTransitions[g.Status]
 	_ = worklog
 	return g
 }
@@ -134,6 +149,9 @@ func RenderText(g Guidance) string {
 		for _, c := range g.SuggestedCommands {
 			fmt.Fprintf(&b, "  %s\n", c)
 		}
+	}
+	if len(g.NextTransitions) > 0 {
+		b.WriteString("\nNext transitions: " + strings.Join(g.NextTransitions, ", ") + "\n")
 	}
 	return b.String()
 }

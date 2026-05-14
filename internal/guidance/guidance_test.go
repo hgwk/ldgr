@@ -139,3 +139,48 @@ func containsAny(xs []string, needle string) bool {
 	}
 	return false
 }
+
+func TestCompute_NextTransitionsForEachStatus(t *testing.T) {
+	cases := []struct {
+		status string
+		want   []string
+	}{
+		{"open", []string{"in_progress", "blocked", "cancelled"}},
+		{"in_progress", []string{"audit_ready", "blocked", "cancelled"}},
+		{"blocked", []string{"in_progress", "cancelled"}},
+		{"audit_ready", []string{"done", "changes_requested", "cancelled"}},
+		{"changes_requested", []string{"in_progress", "open", "cancelled"}},
+		{"done", nil},
+		{"cancelled", nil},
+	}
+	for _, c := range cases {
+		g := Compute(ticket(map[string]any{"status": c.status}), nil)
+		if len(g.NextTransitions) != len(c.want) {
+			t.Fatalf("status=%s: want %v, got %v", c.status, c.want, g.NextTransitions)
+		}
+		for i, w := range c.want {
+			if g.NextTransitions[i] != w {
+				t.Fatalf("status=%s pos %d: want %s, got %s", c.status, i, w, g.NextTransitions[i])
+			}
+		}
+	}
+}
+
+func TestRenderText_IncludesNextTransitions(t *testing.T) {
+	g := Compute(ticket(map[string]any{"status": "in_progress"}), nil)
+	text := RenderText(g)
+	if !strings.Contains(text, "Next transitions:") {
+		t.Fatalf("RenderText should include Next transitions line, got:\n%s", text)
+	}
+	if !strings.Contains(text, "audit_ready") {
+		t.Fatalf("transitions should mention audit_ready: %s", text)
+	}
+}
+
+func TestRenderText_OmitsTransitionsForTerminal(t *testing.T) {
+	g := Compute(ticket(map[string]any{"status": "done", "audit_result": "pass"}), nil)
+	text := RenderText(g)
+	if strings.Contains(text, "Next transitions:") {
+		t.Fatalf("done has no further transitions; should not be listed: %s", text)
+	}
+}
