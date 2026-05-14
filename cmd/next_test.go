@@ -117,3 +117,33 @@ func TestNext_RejectsBadRole(t *testing.T) {
 		t.Fatalf("expected non-zero for bad role")
 	}
 }
+
+func TestNext_GitFlagInNonGitDirIsHarmless(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"ticket":"G-1","parent_ticket":"BUG","role":"impl","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[]}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "G-1", "--git"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("--git in non-git target should still succeed")
+	}
+}
+
+func TestNext_GitFlagWithJSON(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := `{"ticket":"GJ-1","parent_ticket":"BUG","role":"impl","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[]}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "GJ-1", "--git", "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("--git --format json failed")
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("not json: %v\n%s", err, out.String())
+	}
+	// git key may or may not be present when --git is used in non-git dir, that's OK
+	// We just want no error and valid JSON.
+}

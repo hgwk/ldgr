@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
 
+	"github.com/hgwk/ldgr/internal/gitutil"
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
 )
@@ -20,13 +22,14 @@ var validRoles = map[string]bool{
 	"maintainer":  true,
 }
 
-// RunNextCLI implements `ldgr next [--ticket ID] [--role ROLE] [--format text|json]`.
+// RunNextCLI implements `ldgr next [--ticket ID] [--role ROLE] [--format text|json] [--git]`.
 func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("next")
 	target := fs.String("target", "", "")
 	ticket := fs.String("ticket", "", "")
 	format := fs.String("format", "text", "")
 	role := fs.String("role", "", "implementer|auditor|planner|maintainer (project-wide mode)")
+	gitFlag := fs.Bool("git", false, "compare git working tree against ticket paths")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -50,8 +53,30 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	if *ticket == "" {
 		// Project-wide mode.
 		pg := guidance.ComputeProject(ticketRows, worklog, *role)
+		if *gitFlag && gitutil.IsWorkTree(dir) {
+			changed := gitutil.ChangedFiles(dir)
+			findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), "")
+			// Emit findings to stderr.
+			if len(findings.Untracked) > 0 {
+				fmt.Fprintf(stderr, "git: %d uncommitted file(s) not covered by any active ticket path:\n", len(findings.Untracked))
+				for _, f := range findings.Untracked {
+					fmt.Fprintf(stderr, "  %s\n", f)
+				}
+			}
+			for _, id := range findings.IdleTickets {
+				fmt.Fprintf(stderr, "git: ticket %s in_progress but no changed file matches its paths.\n", id)
+			}
+		}
 		if *format == "json" {
 			data, _ := guidance.RenderProjectJSON(pg)
+			if *gitFlag && gitutil.IsWorkTree(dir) {
+				changed := gitutil.ChangedFiles(dir)
+				findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), "")
+				var m map[string]any
+				json.Unmarshal(data, &m)
+				m["git"] = findings
+				data, _ = json.MarshalIndent(m, "", "  ")
+			}
 			fmt.Fprintln(stdout, string(data))
 		} else {
 			fmt.Fprint(stdout, guidance.RenderProjectText(pg))
@@ -66,6 +91,20 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	g := guidance.Compute(latest, worklog)
+	if *gitFlag && gitutil.IsWorkTree(dir) {
+		changed := gitutil.ChangedFiles(dir)
+		findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), *ticket)
+		// Emit findings to stderr.
+		if len(findings.Untracked) > 0 {
+			fmt.Fprintf(stderr, "git: %d uncommitted file(s) not covered by any active ticket path:\n", len(findings.Untracked))
+			for _, f := range findings.Untracked {
+				fmt.Fprintf(stderr, "  %s\n", f)
+			}
+		}
+		for _, id := range findings.IdleTickets {
+			fmt.Fprintf(stderr, "git: ticket %s in_progress but no changed file matches its paths.\n", id)
+		}
+	}
 	switch *format {
 	case "json":
 		data, err := guidance.RenderJSON(g)
@@ -73,11 +112,33 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
+		if *gitFlag && gitutil.IsWorkTree(dir) {
+			changed := gitutil.ChangedFiles(dir)
+			findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), *ticket)
+			var m map[string]any
+			json.Unmarshal(data, &m)
+			m["git"] = findings
+			data, _ = json.MarshalIndent(m, "", "  ")
+		}
 		fmt.Fprintln(stdout, string(data))
 	default:
 		fmt.Fprint(stdout, guidance.RenderText(g))
 	}
 	return 0
+}
+
+// latestActive returns the latest row for each ticket with active status.
+func latestActive(ticketRows []ledger.Row) []ledger.Row {
+	latest := guidance.LatestTickets(ticketRows)
+	activeOnly := make([]ledger.Row, 0, len(latest))
+	for _, r := range latest {
+		s, _ := r["status"].(string)
+		switch s {
+		case "open", "in_progress", "blocked", "audit_ready", "changes_requested":
+			activeOnly = append(activeOnly, r)
+		}
+	}
+	return activeOnly
 }
 
 // findLatestTicket returns the latest non-invalidate row matching the ticket id.
