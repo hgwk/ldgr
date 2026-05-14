@@ -62,6 +62,30 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		return 1
 	}
 
+	// Audit-pass gate: worklog rows must reference an existing ticket
+	// whose latest row is an audit-pass done row.
+	ticketID, _ := input["ticket"].(string)
+	if ticketID == "" {
+		fmt.Fprintln(stderr, "worklog: ticket is required for delivery records.")
+		fmt.Fprintln(stderr, "  Worklog rows without a ticket are reserved for ldgr-internal automations (e.g. goal set --log).")
+		return 1
+	}
+	ticketRows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	latest, ok := findLatestTicket(ticketRows, ticketID)
+	if !ok {
+		fmt.Fprintf(stderr, "worklog: ticket %q does not exist.\n", ticketID)
+		return 1
+	}
+	if !isWorklogAllowed(latest) {
+		fmt.Fprintf(stderr, "worklog: ticket %q is not audit-pass done; cannot record a delivery yet.\n", ticketID)
+		fmt.Fprintf(stderr, "  Run `ldgr next --ticket %s` for the required audit step.\n", ticketID)
+		return 1
+	}
+
 	out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -91,4 +115,19 @@ func emitWorklogGuidance(dir string, row map[string]any, stderr io.Writer) {
 	worklog, _ := ledger.ReadRows(filepath.Join(dir, "ledger", "worklog.jsonl"))
 	g := guidance.Compute(latest, worklog)
 	fmt.Fprint(stderr, guidance.RenderText(g))
+}
+
+// isWorklogAllowed returns true iff the latest ticket row has a confirmed
+// audit-pass closure (status=done, role=audit, audit_result=pass).
+func isWorklogAllowed(latest ledger.Row) bool {
+	if s, _ := latest["status"].(string); s != "done" {
+		return false
+	}
+	if r, _ := latest["role"].(string); r != "audit" {
+		return false
+	}
+	if ar, _ := latest["audit_result"].(string); ar != "pass" {
+		return false
+	}
+	return true
 }
