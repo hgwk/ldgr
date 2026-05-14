@@ -461,3 +461,45 @@ func TestTicketReady_RequiresEvidence(t *testing.T) {
 		t.Fatalf("expected failure without --evidence")
 	}
 }
+
+func TestTicketAdd_DefaultsKindAndPriority(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	in := map[string]any{
+		"ticket": "KP-1", "parent_ticket": "BUG", "role": "impl",
+		"status": "open", "task": "x", "scope": "repo",
+		"paths": []any{}, "blocked_by": []any{},
+	}
+	body, _ := json.Marshal(in)
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, bytes.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("add failed")
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	last := rows[len(rows)-1]
+	if last["kind"] != "task" {
+		t.Fatalf("kind default should be task, got %v", last["kind"])
+	}
+	if last["priority"] != "P2" {
+		t.Fatalf("priority default should be P2, got %v", last["priority"])
+	}
+}
+
+func TestTicketAdd_KeepsExplicitKindPriority(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	in := map[string]any{
+		"ticket": "KP-2", "parent_ticket": "BUG", "role": "impl",
+		"status": "open", "task": "x", "scope": "repo",
+		"paths": []any{}, "blocked_by": []any{},
+		"kind": "issue", "priority": "P0",
+	}
+	body, _ := json.Marshal(in)
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, bytes.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("add failed")
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	last := rows[len(rows)-1]
+	if last["kind"] != "issue" || last["priority"] != "P0" {
+		t.Fatalf("explicit values not preserved: %v / %v", last["kind"], last["priority"])
+	}
+}

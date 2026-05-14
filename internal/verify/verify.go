@@ -148,6 +148,16 @@ func checkRows(rep *Report, file string, rows []ledger.Row, required []string, i
 			} else if _, valid := ledger.CategoryEnum[c]; !valid {
 				rep.Warns = append(rep.Warns, Issue{File: file, Line: line, Code: "UNKNOWN_CATEGORY", Message: "unknown category: " + c})
 			}
+			if k, ok := r["kind"].(string); ok && k != "" {
+				if _, valid := ledger.KindEnum[k]; !valid {
+					rep.Warns = append(rep.Warns, Issue{File: file, Line: line, Code: "UNKNOWN_KIND", Message: fmt.Sprintf("[UNKNOWN_KIND] unknown kind: %s", k)})
+				}
+			}
+			if p, ok := r["priority"].(string); ok && p != "" {
+				if _, valid := ledger.PriorityEnum[p]; !valid {
+					rep.Warns = append(rep.Warns, Issue{File: file, Line: line, Code: "UNKNOWN_PRIORITY", Message: fmt.Sprintf("[UNKNOWN_PRIORITY] unknown priority: %s", p)})
+				}
+			}
 		}
 	}
 }

@@ -91,6 +91,14 @@ func normalizeTicketAdd(dir string, input map[string]any, stderr io.Writer) (map
 		}
 	}
 
+	// Set defaults for kind and priority
+	if _, has := input["kind"]; !has {
+		input["kind"] = "task"
+	}
+	if _, has := input["priority"]; !has {
+		input["priority"] = "P2"
+	}
+
 	resolved, err := autoFields(dir, input, stderr)
 	if err != nil {
 		return nil, err

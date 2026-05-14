@@ -55,6 +55,23 @@ var CategoryEnum = map[string]struct{}{
 	"ops":      {},
 }
 
+// KindEnum lists the legal values for ticket.kind (optional, defaulted to "task").
+var KindEnum = map[string]struct{}{
+	"plan":  {},
+	"issue": {},
+	"task":  {},
+	"audit": {},
+	"ops":   {},
+}
+
+// PriorityEnum lists the legal values for ticket.priority (optional, defaulted to "P2").
+var PriorityEnum = map[string]struct{}{
+	"P0": {},
+	"P1": {},
+	"P2": {},
+	"P3": {},
+}
+
 // Goal mirrors ledger/goal.json. unknown fields are preserved through Row,
 // but Goal exposes the documented shape for command convenience.
 type Goal struct {

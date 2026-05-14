@@ -365,3 +365,47 @@ func contains(xs []string, x string) bool {
 	}
 	return false
 }
+
+func TestVerify_WarnsOnUnknownKind(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"K-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"in_progress","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":"","kind":"weird"}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "UNKNOWN_KIND") {
+		t.Fatalf("expected UNKNOWN_KIND warn")
+	}
+}
+
+func TestVerify_WarnsOnUnknownPriority(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"P-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"in_progress","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":"","priority":"P9"}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "UNKNOWN_PRIORITY") {
+		t.Fatalf("expected UNKNOWN_PRIORITY warn")
+	}
+}
+
+func TestVerify_MissingKindOrPriorityIsSilent(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"S-1","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"in_progress","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	for _, w := range report.Warns {
+		if w.Code == "UNKNOWN_KIND" || w.Code == "UNKNOWN_PRIORITY" {
+			t.Fatalf("missing kind/priority should not warn; got %v", w)
+		}
+	}
+}
