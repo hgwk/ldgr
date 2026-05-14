@@ -13,6 +13,7 @@ import (
 	"github.com/hgwk/ldgr/internal/gitutil"
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
+	"github.com/hgwk/ldgr/internal/lifecycle"
 )
 
 func init() {
@@ -105,6 +106,9 @@ func normalizeTicketAdd(dir string, input map[string]any, stderr io.Writer) (map
 	if err := requireNonEmpty(resolved, ledger.TicketNonEmpty, "ticket"); err != nil {
 		return nil, err
 	}
+	if v := lifecycle.Validate(ledger.Row(resolved), nil); v != nil {
+		return nil, fmt.Errorf("%s\n%s", v.Message, v.Hint)
+	}
 	return resolved, nil
 }
 
@@ -148,9 +152,15 @@ func normalizeTicketEvent(dir string, input map[string]any, stderr io.Writer) (m
 		return nil, err
 	}
 	var base map[string]any
+	var prevRow ledger.Row
 	for _, r := range rows {
 		if r["ticket"] == ticket {
-			base = map[string]any(r)
+			// Make a copy of the row to avoid modifying the original
+			base = make(map[string]any)
+			for k, v := range r {
+				base[k] = v
+			}
+			prevRow = r
 		}
 	}
 	if base == nil {
@@ -178,6 +188,9 @@ func normalizeTicketEvent(dir string, input map[string]any, stderr io.Writer) (m
 	}
 	if err := requireNonEmpty(resolved, ledger.TicketNonEmpty, "ticket"); err != nil {
 		return nil, err
+	}
+	if v := lifecycle.Validate(ledger.Row(resolved), prevRow); v != nil {
+		return nil, fmt.Errorf("%s\n%s", v.Message, v.Hint)
 	}
 	return resolved, nil
 }
