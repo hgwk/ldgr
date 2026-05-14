@@ -57,3 +57,63 @@ func TestNext_MissingTicketFails(t *testing.T) {
 		t.Fatalf("stderr should name the ticket: %s", errb.String())
 	}
 }
+
+func TestNext_WithoutTicketReturnsProjectQueue(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := `{"ticket":"PRJ-1","parent_ticket":"BUG","role":"impl","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[],"priority":"P0"}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("project next failed")
+	}
+	if !strings.Contains(out.String(), "Project queue") {
+		t.Fatalf("project queue header missing: %s", out.String())
+	}
+}
+
+func TestNext_JSONProjectMode(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := `{"ticket":"PRJ-2","parent_ticket":"BUG","role":"impl","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[],"priority":"P0"}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("project next json failed")
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if _, ok := resp["highlights"]; !ok {
+		t.Fatalf("missing highlights: %v", resp)
+	}
+}
+
+func TestNext_RoleFiltersProjectQueue(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := `{"ticket":"PRJ-3","parent_ticket":"BUG","role":"impl","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[],"priority":"P0"}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--role", "auditor", "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("project next role failed")
+	}
+	var resp map[string]any
+	json.Unmarshal(out.Bytes(), &resp)
+	if resp["role"] != "auditor" {
+		t.Fatalf("role not echoed: %v", resp)
+	}
+}
+
+func TestNext_RejectsBadRole(t *testing.T) {
+	target, _ := mustInit(t)
+	var errb bytes.Buffer
+	code := RunNextCLI([]string{"--target", target, "--role", "weirdo"}, &bytes.Buffer{}, &errb)
+	if code == 0 {
+		t.Fatalf("expected non-zero for bad role")
+	}
+}
