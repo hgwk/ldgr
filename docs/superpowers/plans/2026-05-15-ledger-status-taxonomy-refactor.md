@@ -1,20 +1,31 @@
-# Ledger Schema v1 Migration Plan
+# Ledger Status Taxonomy Refactor Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
 
-**Status:** Implementation complete in the working tree. Schema detection, v1 verification, `ldgr migrate legacy-to-v1 --plan|--apply`, v1 write paths, guidance/suggest output, and viewer 4×2 Kanban support are implemented and verified locally. Rollout to existing projects remains explicit and opt-in.
+**Status:** Implementation complete in the working tree. Status taxonomy labels,
+compatibility filtering, `ldgr migrate legacy-to-v1 --plan|--apply`, canonical
+write paths, guidance/suggest output, and viewer 4×2 Kanban support are
+implemented and verified locally. Rollout to existing projects remains explicit
+and opt-in.
 
-**Goal:** Introduce ledger schema v1 with a cleaner ticket vocabulary (`type/state/area/title/event`) and explicit `ldgr migrate legacy-to-v1` flow, while keeping existing canonical schema v1 projects readable until they opt in.
+**Goal:** Refactor the ticket status taxonomy and row vocabulary without a
+schema-v2 bump. The user-facing labels move toward `ready/doing/review/rework`
+while compatibility code keeps historical rows readable. Projects that want the
+canonical row vocabulary can opt into the explicit `ldgr migrate legacy-to-v1`
+flow.
 
-**Non-goal:** Do not silently mutate existing v1 projects. Do not mix v1 fields into v1 rows as an implicit partial migration.
+**Non-goal:** Do not describe this as schema v2. Do not silently mutate existing
+projects. Do not mix canonical fields into legacy rows as an implicit partial
+rewrite.
 
 **Rollout rule:** Documentation and tooling may be shipped before migrating any real project. A target repo moves to v1 only after `ldgr migrate legacy-to-v1 --target <repo> --plan` has been reviewed, backup behavior is accepted, and `--apply` is run intentionally.
 
 ---
 
-## Schema Direction
+## Taxonomy Direction
 
-Legacy rows are the current historical data. Canonical schema v1 is the migration target.
+Legacy rows are the current historical data. Canonical schema v1 is the optional
+rewrite target for projects that want the normalized vocabulary.
 
 `ledger/config.json`:
 

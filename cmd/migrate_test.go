@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,22 @@ func TestMigrateLegacyToV1_ApplyRewritesAndVerifies(t *testing.T) {
 	}
 	if cfg.SchemaVersion != 1 {
 		t.Fatalf("expected schema v1, got %d", cfg.SchemaVersion)
+	}
+	var raw struct {
+		HistoricalBaseline struct {
+			Tickets int `json:"tickets"`
+			Worklog int `json:"worklog"`
+		} `json:"historical_baseline"`
+	}
+	cfgBytes, err := os.ReadFile(filepath.Join(target, "ledger", "config.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if err := json.Unmarshal(cfgBytes, &raw); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if raw.HistoricalBaseline.Tickets != 2 || raw.HistoricalBaseline.Worklog != 1 {
+		t.Fatalf("expected migration baseline 2/1, got %+v", raw.HistoricalBaseline)
 	}
 	backupEntries, err := os.ReadDir(filepath.Join(target, "ledger", ".backup"))
 	if err != nil {

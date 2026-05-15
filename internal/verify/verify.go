@@ -404,10 +404,6 @@ func checkCanonicalTransitions(rep *Report, tickets []ledger.Row) {
 			if cur == "" || cur == prev {
 				continue
 			}
-			if prev == "" {
-				prev = cur
-				continue
-			}
 			if !canonicalLifecycleTransitions[prev][cur] {
 				ln, _ := numberAsInt(r["n"])
 				rep.Warns = append(rep.Warns, Issue{

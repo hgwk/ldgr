@@ -76,6 +76,7 @@ type migratePlan struct {
 	warnings       []string
 	warningSamples map[string][]string
 	counts         migrateCounts
+	baseline       historicalBaseline
 }
 
 type migrateCounts struct {
@@ -91,6 +92,11 @@ type migrateCounts struct {
 	summaryDefaulted     int
 	worklogTicketDefault int
 	unmappedField        int
+}
+
+type historicalBaseline struct {
+	Tickets int `json:"tickets"`
+	Worklog int `json:"worklog"`
 }
 
 func (p migratePlan) legacyPlan() legacy.Plan {
@@ -140,7 +146,8 @@ func composeLegacyToCanonicalPlan(target string) (migratePlan, error) {
 		addMigrationSamples(samples, "worklog", row, canonical, rowCounts)
 		canonicalWorklogs = append(canonicalWorklogs, canonical)
 	}
-	cfgBytes, err := rewriteConfigSchemaVersion(cfgPath, 1)
+	baseline := historicalBaseline{Tickets: len(canonicalTickets), Worklog: len(canonicalWorklogs)}
+	cfgBytes, err := rewriteConfigSchemaVersion(cfgPath, 1, baseline)
 	if err != nil {
 		return migratePlan{}, err
 	}
@@ -161,6 +168,7 @@ func composeLegacyToCanonicalPlan(target string) (migratePlan, error) {
 		},
 		counts:         counts,
 		warningSamples: samples,
+		baseline:       baseline,
 	}
 	plan.warnings = migrationWarnings(counts)
 	return plan, nil
@@ -389,7 +397,7 @@ func migrationSampleLabel(kind string, source, mapped ledger.Row) string {
 	return fmt.Sprintf("%s n=%d id=%s", kind, n, id)
 }
 
-func rewriteConfigSchemaVersion(path string, version int) ([]byte, error) {
+func rewriteConfigSchemaVersion(path string, version int, baseline historicalBaseline) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -400,6 +408,9 @@ func rewriteConfigSchemaVersion(path string, version int) ([]byte, error) {
 	}
 	delete(raw, "version")
 	raw["schema_version"] = version
+	if baseline.Tickets > 0 || baseline.Worklog > 0 {
+		raw["historical_baseline"] = baseline
+	}
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return nil, err

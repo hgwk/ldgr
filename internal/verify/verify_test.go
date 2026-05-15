@@ -156,6 +156,20 @@ func TestVerify_SchemaCanonicalWarnsOnBadTransition(t *testing.T) {
 	}
 }
 
+func TestVerify_SchemaCanonicalWarnsOnInvalidInitialState(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONCanonical(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":[],"evidence":[],"event":{"actor":"codex","role":"implementer","summary":"review","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarnCode(report, "INVALID_TRANSITION") {
+		t.Fatalf("expected INVALID_TRANSITION warn for invalid initial canonical state, got %+v", report.Warns)
+	}
+}
+
 func TestVerify_SchemaCanonicalWarnsOnPrematureWorklog(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"ledger/config.json": validConfigJSONCanonical(),

@@ -56,11 +56,12 @@ ldgr migrate legacy-to-v1 --target . --apply
 ```
 
 `--apply` rewrites `ledger/config.json`, `ledger/tickets.jsonl`, and
-`ledger/worklog.jsonl`, and always creates a backup under
+`ledger/worklog.jsonl`, records a `historical_baseline` in
+`ledger/config.json`, and always creates a backup under
 `ledger/.backup/legacy-to-v1-<timestamp>/`. `goal.json` is left semantically
-unchanged. Weak historical `done` and `changes_requested` rows are mapped back
-to `review` instead of being promoted into fake audit-pass records; ghost rows
-are kept with synthetic IDs and surfaced in the warning summary.
+unchanged. Weak historical `done` and `changes_requested` rows are mapped back to
+`review` instead of being promoted into fake audit-pass records; ghost rows are
+kept with synthetic IDs and surfaced in the warning summary.
 
 Common warning codes:
 
@@ -168,8 +169,9 @@ gates on a historical project, use a baseline and check only new rows:
 ldgr verify --target . --new-only --since-ticket-n 482 --since-worklog-n 321
 ```
 
-Use `ldgr verify --strict` only when you've intentionally cleaned the historical
-rows or migrated the project to canonical schema v1.
+Use `ldgr verify --strict` only when you've intentionally cleaned or accepted all
+historical compatibility warnings. A canonical schema v1 rewrite can still retain
+historical lifecycle/worklog violations behind the baseline.
 
 ## Install
 
@@ -192,7 +194,14 @@ tar -xzf ldgr.tar.gz
 sudo mv ldgr_*/ldgr /usr/local/bin/ldgr
 ```
 
-(Adjust the architecture detection for your platform if the substitution fails.)
+Homebrew-on-Apple-Silicon users often prefer:
+
+```bash
+install -m 0755 ldgr_*/ldgr /opt/homebrew/bin/ldgr
+```
+
+Use `/usr/local/bin/ldgr` for Intel Homebrew or non-Homebrew installs. A Homebrew
+tap is not published yet; until then, use `go install` or the release tarball.
 
 ## Integrate into a repo
 
