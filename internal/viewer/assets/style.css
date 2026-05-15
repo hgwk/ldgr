@@ -440,6 +440,11 @@ table.dense tbody tr:hover { background: var(--surface-2); }
   max-height: 240px;
   overflow-y: auto;
 }
+.drawer-prose:focus-visible,
+.drawer-pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .drawer-list {
   margin: 0;
   padding-left: var(--space-4);
