@@ -360,6 +360,18 @@ type Dashboard struct {
 	Priority    PriorityCounts   `json:"priority"`
 	Kind        []KindCount      `json:"kind"`
 	StaleClaims StaleClaims      `json:"stale_claims"`
+	Lifecycle   LifecycleLatency `json:"lifecycle"`
+}
+
+// LifecycleLatency summarizes per-ticket cycle time and audit latency.
+// Hours are emitted raw; the frontend rounds for display.
+type LifecycleLatency struct {
+	CompletedCycleCount     int     `json:"completed_cycle_count"`
+	MedianCycleHours        float64 `json:"median_cycle_hours"`
+	P90CycleHours           float64 `json:"p90_cycle_hours"`
+	PendingAuditCount       int     `json:"pending_audit_count"`
+	MedianAuditLatencyHours float64 `json:"median_audit_latency_hours"`
+	P90AuditLatencyHours    float64 `json:"p90_audit_latency_hours"`
 }
 
 // StaleClaims summarizes expired and near-expiring agent claims on
@@ -672,6 +684,7 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	}
 
 	stale := computeStaleClaims(latest, now)
+	lifecycle := ComputeLifecycleLatency(perTicketHistory(ticketRows), now)
 
 	return Dashboard{
 		Progress:    Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
@@ -682,7 +695,181 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 		Priority:    pc,
 		Kind:        kinds,
 		StaleClaims: stale,
+		Lifecycle:   lifecycle,
 	}
+}
+
+// perTicketHistory groups ticket rows by ticket id with invalidated rows and
+// invalidate-companion rows removed, sorted by n ascending. This matches the
+// shape ComputeLifecycleLatency expects.
+func perTicketHistory(rows []ledger.Row) [][]ledger.Row {
+	invalidated := InvalidatedNs(rows)
+	byID := map[string][]ledger.Row{}
+	order := []string{}
+	for _, r := range rows {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		n, _ := r["n"].(float64)
+		if _, isGhost := invalidated[int(n)]; isGhost {
+			continue
+		}
+		id, _ := r["ticket"].(string)
+		if id == "" {
+			continue
+		}
+		if _, seen := byID[id]; !seen {
+			order = append(order, id)
+		}
+		byID[id] = append(byID[id], r)
+	}
+	out := make([][]ledger.Row, 0, len(order))
+	for _, id := range order {
+		hist := byID[id]
+		sort.SliceStable(hist, func(i, j int) bool {
+			a, _ := hist[i]["n"].(float64)
+			b, _ := hist[j]["n"].(float64)
+			return a < b
+		})
+		out = append(out, hist)
+	}
+	return out
+}
+
+// isAuditPassDone returns true for the strong-done predicate:
+// role == "audit" AND status == "done" AND audit_result == "pass".
+func isAuditPassDone(r ledger.Row) bool {
+	role, _ := r["role"].(string)
+	status, _ := r["status"].(string)
+	result, _ := r["audit_result"].(string)
+	return role == "audit" && status == "done" && result == "pass"
+}
+
+// ComputeLifecycleLatency derives per-ticket cycle time (first active row to
+// audit-pass done) and audit latency (latest audit_ready row to audit-pass
+// done, or to now if still pending). Cancelled tickets are excluded from both
+// completed and pending stats. Each input slice is one ticket's full history,
+// sorted ascending by n/ts.
+//
+// Median uses the lower-of-two value for even sample counts. P90 uses
+// nearest-rank: index = ceil(0.9 * n) - 1 after sort.
+func ComputeLifecycleLatency(tickets [][]ledger.Row, now time.Time) LifecycleLatency {
+	var cycleHours, auditHours []float64
+	for _, hist := range tickets {
+		if len(hist) == 0 {
+			continue
+		}
+		// Determine final status to detect cancellation.
+		final := hist[len(hist)-1]
+		finalStatus, _ := final["status"].(string)
+		if finalStatus == "cancelled" {
+			continue
+		}
+
+		// First entry into open or in_progress (cycle start).
+		var cycleStart time.Time
+		for _, r := range hist {
+			s, _ := r["status"].(string)
+			if s != "open" && s != "in_progress" {
+				continue
+			}
+			ts, _ := r["ts"].(string)
+			cycleStart = parseTS(ts)
+			break
+		}
+
+		// Find audit-pass done row (if any).
+		var auditPassTS time.Time
+		var auditPassFound bool
+		for _, r := range hist {
+			if isAuditPassDone(r) {
+				ts, _ := r["ts"].(string)
+				auditPassTS = parseTS(ts)
+				auditPassFound = true
+				break
+			}
+		}
+
+		// Latest audit_ready row.
+		var latestReadyTS time.Time
+		var latestReadyFound bool
+		for _, r := range hist {
+			s, _ := r["status"].(string)
+			if s != "audit_ready" {
+				continue
+			}
+			ts, _ := r["ts"].(string)
+			t := parseTS(ts)
+			if !latestReadyFound || t.After(latestReadyTS) {
+				latestReadyTS = t
+				latestReadyFound = true
+			}
+		}
+
+		if auditPassFound {
+			if !cycleStart.IsZero() && !auditPassTS.Before(cycleStart) {
+				cycleHours = append(cycleHours, auditPassTS.Sub(cycleStart).Hours())
+			}
+			if latestReadyFound && !auditPassTS.Before(latestReadyTS) {
+				auditHours = append(auditHours, auditPassTS.Sub(latestReadyTS).Hours())
+			}
+			continue
+		}
+
+		// No audit-pass done yet. If currently pending audit (latest row is
+		// audit_ready), contribute to pending audit latency.
+		if finalStatus == "audit_ready" && latestReadyFound {
+			auditHours = append(auditHours, now.Sub(latestReadyTS).Hours())
+		}
+	}
+
+	out := LifecycleLatency{
+		CompletedCycleCount: len(cycleHours),
+		PendingAuditCount:   len(auditHours),
+	}
+	if len(cycleHours) > 0 {
+		out.MedianCycleHours = medianLower(cycleHours)
+		out.P90CycleHours = p90NearestRank(cycleHours)
+	}
+	if len(auditHours) > 0 {
+		out.MedianAuditLatencyHours = medianLower(auditHours)
+		out.P90AuditLatencyHours = p90NearestRank(auditHours)
+	}
+	return out
+}
+
+// medianLower returns the median, picking the lower-of-two for even counts.
+func medianLower(xs []float64) float64 {
+	sorted := append([]float64(nil), xs...)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return sorted[n/2-1]
+}
+
+// p90NearestRank returns the 90th percentile using nearest-rank:
+// index = ceil(0.9 * n) - 1 after sort.
+func p90NearestRank(xs []float64) float64 {
+	sorted := append([]float64(nil), xs...)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	// ceil(0.9 * n) using integer math.
+	idx := (9*n + 9) / 10
+	if idx < 1 {
+		idx = 1
+	}
+	if idx > n {
+		idx = n
+	}
+	return sorted[idx-1]
 }
 
 // computeStaleClaims tallies expired and near-expiring claims across the
