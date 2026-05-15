@@ -36,6 +36,12 @@ function fmtTS(ts) {
   if (isNaN(d.getTime())) return ts;
   return d.toISOString().substring(0, 16).replace("T", " ") + "Z";
 }
+function isClaimStale(claimUntil) {
+  if (!claimUntil) return false;
+  const d = new Date(claimUntil);
+  if (isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
 async function getJSON(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(path + " → " + r.status);
@@ -386,8 +392,18 @@ function kanbanCard(t) {
   const card = el("div", { class: "kanban-card", onclick: () => openDrawer(t.ticket) });
 
   const top = el("div", { class: "kanban-card-top" });
-  top.appendChild(el("span", { class: "mono kanban-card-id", text: t.ticket || "—" }));
-  if (t.status) top.appendChild(el("span", { class: "pill " + t.status, text: t.status }));
+  const idGroup = el("span", { class: "kanban-card-idgroup" });
+  idGroup.appendChild(el("span", { class: "mono kanban-card-id", text: t.ticket || "—" }));
+  if (t.status) idGroup.appendChild(el("span", { class: "pill " + t.status, text: t.status }));
+  top.appendChild(idGroup);
+  const ownerName = t.claimed_by || t.agent || "";
+  if (ownerName) {
+    const stale = isClaimStale(t.claim_until);
+    const ownerBadge = el("span", { class: "badge kanban-owner" + (stale ? " kanban-owner-stale" : ""), title: stale ? "claim expired" : "owner" });
+    ownerBadge.appendChild(el("span", { class: "kanban-owner-name", text: "@" + ownerName }));
+    if (stale) ownerBadge.appendChild(el("span", { class: "kanban-owner-mark", text: "⌛" }));
+    top.appendChild(ownerBadge);
+  }
   card.appendChild(top);
 
   const task = el("div", { class: "kanban-card-task", text: t.task || "" });
@@ -397,7 +413,6 @@ function kanbanCard(t) {
   if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + t.priority.toLowerCase(), text: t.priority }));
   if (t.kind && t.kind !== "task") badges.appendChild(el("span", { class: "badge", text: t.kind }));
   if (t.category) badges.appendChild(el("span", { class: "badge", text: t.category }));
-  if (t.claimed_by) badges.appendChild(el("span", { class: "badge", text: "@" + t.claimed_by }));
   const blocked = (t.blocked_by || []).filter((s) => s);
   if (blocked.length > 0) badges.appendChild(el("span", { class: "badge badge-warn", text: "⛔ " + blocked.length }));
   if ((t.evidence || []).length > 0) badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ ev" }));

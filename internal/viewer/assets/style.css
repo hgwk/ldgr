@@ -421,6 +421,25 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 .badge-warn { color: var(--status-blocked); border-color: var(--status-blocked); }
 .badge-ok { color: var(--status-done); border-color: var(--status-done); }
 .badge-mono { font-family: var(--font-mono); }
+.kanban-card-idgroup {
+  display: inline-flex; align-items: baseline; gap: var(--space-2);
+  min-width: 0; flex: 1 1 auto;
+}
+.kanban-owner {
+  display: inline-flex; align-items: center; gap: 2px;
+  flex: 0 0 auto; max-width: 100px;
+  font-family: var(--font-mono);
+}
+.kanban-owner-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 84px;
+}
+.kanban-owner-mark { opacity: 0.8; }
+.kanban-owner-stale {
+  color: var(--status-blocked);
+  border-color: var(--status-blocked);
+  opacity: 0.85;
+}
 
 /* Drawer */
 .drawer-head {
