@@ -106,6 +106,13 @@ body {
   overflow: hidden;
 }
 
+/* Inline SVG icons */
+.icon { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; flex: 0 0 auto; }
+.theme-toggle .icon { width: 16px; height: 16px; vertical-align: 0; }
+#drawer .close .icon { width: 16px; height: 16px; vertical-align: 0; }
+.badge .icon, .kanban-owner-mark .icon { width: 11px; height: 11px; vertical-align: -1px; }
+.badge .icon + * { margin-left: 2px; }
+
 /* Theme toggle button in topbar */
 .theme-toggle {
   margin-left: auto;

@@ -20,6 +20,27 @@ let state = {
 let pollTimer = null;
 
 function $(id) { return document.getElementById(id); }
+const ICON_PATHS = {
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+};
+function icon(name, extraClass) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("class", "icon icon-" + name + (extraClass ? " " + extraClass : ""));
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = ICON_PATHS[name] || "";
+  return svg;
+}
 function el(tag, attrs, ...children) {
   const e = document.createElement(tag);
   for (const k in attrs || {}) {
@@ -94,6 +115,12 @@ function selectControl(values, current, label, onChange) {
     sel.appendChild(opt);
   }
   return sel;
+}
+function clearInvalidSelection(bucket, key, allowed) {
+  if (bucket[key] && !allowed.includes(bucket[key])) {
+    bucket[key] = "";
+    syncURL();
+  }
 }
 function textControl(value, placeholder, onChange) {
   return el("input", { type: "search", value, placeholder, oninput: (e) => onChange(e.target.value) });
@@ -536,12 +563,21 @@ async function renderKanban(root, background) {
   for (const col of (k.columns || [])) for (const t of (col.tickets || [])) allTickets.push(t);
   const parents = uniqueSorted(allTickets.map((t) => t.parent_ticket || t.parent));
   const agents = uniqueSorted(allTickets.map((t) => t.claimed_by || t.owner || t.agent));
+  const canonical = Array.isArray(k.grid) && k.grid.length > 0;
+  const kindOptions = canonical
+    ? ["", "epic", "plan", "issue", "task", "audit", "ops"]
+    : ["", "plan", "issue", "task", "audit", "ops"];
+  const stateOptions = canonical
+    ? ["", "ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"]
+    : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
+  clearInvalidSelection(state.kanbanFilter, "kind", kindOptions);
+  clearInvalidSelection(state.kanbanFilter, "status", stateOptions);
 
   // Filter bar
   const bar = el("div", { class: "kanban-bar" });
   bar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.kanbanFilter.priority, "All priorities", (v) => { state.kanbanFilter.priority = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", "plan", "issue", "task", "audit", "ops"].map(v => ({ value: v, text: v ? "Kind " + v : "" })), state.kanbanFilter.kind, "All kinds", (v) => { state.kanbanFilter.kind = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"].map(v => ({ value: v, text: v ? "Status " + v : "" })), state.kanbanFilter.status, "All statuses", (v) => { state.kanbanFilter.status = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(kindOptions.map(v => ({ value: v, text: v ? (canonical ? "Type " : "Kind ") + v : "" })), state.kanbanFilter.kind, canonical ? "All types" : "All kinds", (v) => { state.kanbanFilter.kind = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(stateOptions.map(v => ({ value: v, text: v ? (canonical ? "State " : "Status ") + v : "" })), state.kanbanFilter.status, canonical ? "All states" : "All statuses", (v) => { state.kanbanFilter.status = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(["", ...parents], state.kanbanFilter.parent, "All parents", (v) => { state.kanbanFilter.parent = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(["", ...agents], state.kanbanFilter.agent, "All agents", (v) => { state.kanbanFilter.agent = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl([{value:"",text:""}, {value:"yes",text:"Blocked only"}], state.kanbanFilter.blocked, "Any blocker", (v) => { state.kanbanFilter.blocked = v; syncURL(); loadPage(); }));
@@ -562,8 +598,12 @@ async function renderKanban(root, background) {
     return;
   }
 
+  const byColumn = new Map(cols.map((c) => [c.id, c]));
+  const orderedCols = canonical
+    ? k.grid.flat().map((id) => byColumn.get(id)).filter(Boolean)
+    : cols;
   const board = el("div", { class: "kanban-board" });
-  for (const col of cols) {
+  for (const col of orderedCols) {
     const colEl = el("div", { class: "kanban-col" });
     const head = el("div", { class: "kanban-col-head" });
     head.appendChild(el("span", { class: "kanban-col-title", text: col.title }));
@@ -645,7 +685,11 @@ function kanbanCard(t) {
     const stale = isClaimStale(t.claim_until);
     const ownerBadge = el("span", { class: "badge kanban-owner" + (stale ? " kanban-owner-stale" : ""), title: stale ? "claim expired" : "owner" });
     ownerBadge.appendChild(el("span", { class: "kanban-owner-name", text: "@" + ownerName }));
-    if (stale) ownerBadge.appendChild(el("span", { class: "kanban-owner-mark", text: "⌛" }));
+    if (stale) {
+      const mark = el("span", { class: "kanban-owner-mark", "aria-label": "claim expired" });
+      mark.appendChild(icon("clock"));
+      ownerBadge.appendChild(mark);
+    }
     top.appendChild(ownerBadge);
   }
   card.appendChild(top);
@@ -661,9 +705,19 @@ function kanbanCard(t) {
   if (area) badges.appendChild(el("span", { class: "badge", text: area }));
   const blocked = (t.blocked_by || []).filter((s) => s);
   if (blocked.length > 0) badges.appendChild(el("span", { class: "badge badge-warn", text: "⛔ " + blocked.length }));
-  if ((t.evidence || []).length > 0) badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ ev" }));
+  if ((t.evidence || []).length > 0) {
+    const b = el("span", { class: "badge badge-ok" });
+    b.appendChild(icon("check"));
+    b.appendChild(document.createTextNode(" ev"));
+    badges.appendChild(b);
+  }
   const eventResult = t.event && t.event.result;
-  if (t.audit_result === "pass" || eventResult === "pass") badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ audit" }));
+  if (t.audit_result === "pass" || eventResult === "pass") {
+    const b = el("span", { class: "badge badge-ok" });
+    b.appendChild(icon("check"));
+    b.appendChild(document.createTextNode(" audit"));
+    badges.appendChild(b);
+  }
   if (t.branch) badges.appendChild(el("span", { class: "badge badge-mono", text: t.branch }));
   if (badges.childNodes.length > 0) card.appendChild(badges);
 
@@ -732,7 +786,10 @@ async function renderAudit(root, background) {
     tr.appendChild(ownerCell);
     const evCell = el("td");
     if (it.has_evidence) {
-      evCell.appendChild(el("span", { class: "badge badge-ok", text: "evidence ✓" }));
+      const b = el("span", { class: "badge badge-ok" });
+      b.appendChild(icon("check"));
+      b.appendChild(document.createTextNode(" evidence"));
+      evCell.appendChild(b);
     } else {
       evCell.appendChild(el("span", { class: "badge badge-warn", text: "no evidence" }));
     }
@@ -1223,7 +1280,8 @@ function applyTheme(theme) {
   document.documentElement.classList.toggle("dark", dark);
   const btn = document.getElementById("theme-toggle");
   if (btn) {
-    btn.textContent = dark ? "☀" : "◐";
+    btn.textContent = "";
+    btn.appendChild(icon(dark ? "sun" : "moon"));
     btn.setAttribute("aria-pressed", dark ? "true" : "false");
   }
 }
@@ -1231,7 +1289,12 @@ function bind() {
   document.querySelectorAll("#page-nav li").forEach((li) => {
     li.addEventListener("click", () => selectPage(li.dataset.page));
   });
-  document.querySelector("#drawer .close").addEventListener("click", () => $("drawer").classList.remove("open"));
+  const closeBtn = document.querySelector("#drawer .close");
+  if (closeBtn) {
+    closeBtn.textContent = "";
+    closeBtn.appendChild(icon("x"));
+    closeBtn.addEventListener("click", () => $("drawer").classList.remove("open"));
+  }
   const themeBtn = document.getElementById("theme-toggle");
   if (themeBtn) {
     themeBtn.addEventListener("click", () => {
