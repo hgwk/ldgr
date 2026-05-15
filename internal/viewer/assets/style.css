@@ -161,7 +161,24 @@ body {
 .nav-list li.active .meta { color: rgba(255,255,255,0.85); }
 
 /* Main */
-#main { padding: var(--space-5); overflow-y: auto; height: 100dvh; }
+#main {
+  padding: var(--space-5);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* When kanban is the page, let the board fill #page without page-level scroll */
+#page.page-kanban { overflow: hidden; }
+#page.page-kanban .kanban-board { flex: 1 1 auto; min-height: 0; max-height: none; }
 #topbar {
   display: flex; align-items: baseline; gap: var(--space-3);
   margin-bottom: var(--space-4); padding-bottom: var(--space-3);

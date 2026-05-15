@@ -210,6 +210,7 @@ async function loadPage(opts) {
     page.appendChild(el("div", { class: "state-empty", text: "Pick a project from the sidebar." }));
     return;
   }
+  page.className = "page-" + state.page;
   if (!background) setLoading(page);
   try {
     switch (state.page) {
@@ -533,8 +534,8 @@ async function renderKanban(root, background) {
 
   const allTickets = [];
   for (const col of (k.columns || [])) for (const t of (col.tickets || [])) allTickets.push(t);
-  const parents = uniqueSorted(allTickets.map((t) => t.parent_ticket));
-  const agents = uniqueSorted(allTickets.map((t) => t.claimed_by || t.agent));
+  const parents = uniqueSorted(allTickets.map((t) => t.parent_ticket || t.parent));
+  const agents = uniqueSorted(allTickets.map((t) => t.claimed_by || t.owner || t.agent));
 
   // Filter bar
   const bar = el("div", { class: "kanban-bar" });
@@ -569,10 +570,10 @@ async function renderKanban(root, background) {
 
     let tickets = (col.tickets || []).filter((t) => {
 	      if (state.kanbanFilter.priority && (t.priority || "") !== state.kanbanFilter.priority) return false;
-	      if (state.kanbanFilter.kind && (t.kind || "") !== state.kanbanFilter.kind) return false;
-	      if (state.kanbanFilter.status && (t.status || "") !== state.kanbanFilter.status) return false;
-	      if (state.kanbanFilter.parent && (t.parent_ticket || "") !== state.kanbanFilter.parent) return false;
-	      if (state.kanbanFilter.agent && (t.claimed_by || t.agent || "") !== state.kanbanFilter.agent) return false;
+	      if (state.kanbanFilter.kind && (t.kind || t.type || "") !== state.kanbanFilter.kind) return false;
+	      if (state.kanbanFilter.status && ticketState(t) !== state.kanbanFilter.status) return false;
+	      if (state.kanbanFilter.parent && (t.parent_ticket || t.parent || "") !== state.kanbanFilter.parent) return false;
+	      if (state.kanbanFilter.agent && (t.claimed_by || t.owner || t.agent || "") !== state.kanbanFilter.agent) return false;
 	      if (state.kanbanFilter.blocked === "yes" && !(t.blocked_by || []).some(Boolean)) return false;
 	      if (state.kanbanFilter.evidence === "present" && !(t.evidence || []).some(Boolean)) return false;
 	      if (state.kanbanFilter.evidence === "missing" && (t.evidence || []).some(Boolean)) return false;
@@ -584,7 +585,7 @@ async function renderKanban(root, background) {
 	    } else if (state.kanbanSort === "oldest") {
 	      tickets = tickets.slice().sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
 	    } else if (state.kanbanSort === "parent") {
-	      tickets = tickets.slice().sort((a, b) => (a.parent_ticket || "").localeCompare(b.parent_ticket || ""));
+	      tickets = tickets.slice().sort((a, b) => (a.parent_ticket || a.parent || "").localeCompare(b.parent_ticket || b.parent || ""));
 	    } else if (state.kanbanSort === "blocked") {
 	      tickets = tickets.slice().sort((a, b) => Number((b.blocked_by || []).some(Boolean)) - Number((a.blocked_by || []).some(Boolean)));
 	    } else if (state.kanbanSort === "missing_evidence") {
@@ -611,10 +612,11 @@ function kanbanAgeTone(t) {
   const d = new Date(t.ts);
   if (isNaN(d.getTime())) return { cls: "", chip: "" };
   const ageMs = Date.now() - d.getTime();
-  if (t.status === "in_progress" && ageMs >= STALE_IN_PROGRESS_MS) {
+  const stateName = ticketState(t);
+  if ((stateName === "in_progress" || stateName === "doing") && ageMs >= STALE_IN_PROGRESS_MS) {
     return { cls: "kanban-card-stale", chip: Math.floor(ageMs / 86400000) + "d" };
   }
-  if (t.status === "audit_ready" && ageMs >= STALE_AUDIT_MS) {
+  if ((stateName === "audit_ready" || stateName === "review") && ageMs >= STALE_AUDIT_MS) {
     return { cls: "kanban-card-audit-stale", chip: Math.floor(ageMs / 86400000) + "d" };
   }
   return { cls: "", chip: "" };
@@ -622,21 +624,23 @@ function kanbanAgeTone(t) {
 
 function kanbanCard(t) {
   const tone = kanbanAgeTone(t);
-  const card = el("div", { class: "kanban-card" + (tone.cls ? " " + tone.cls : ""), onclick: () => openDrawer(t.ticket) });
+  const id = ticketID(t);
+  const stateName = ticketState(t);
+  const card = el("div", { class: "kanban-card" + (tone.cls ? " " + tone.cls : ""), onclick: () => openDrawer(id) });
 
   const top = el("div", { class: "kanban-card-top" });
   const idGroup = el("span", { class: "kanban-card-idgroup" });
-  idGroup.appendChild(el("span", { class: "mono kanban-card-id", text: t.ticket || "—" }));
-  if (t.status) idGroup.appendChild(el("span", { class: "pill " + t.status, text: t.status }));
+  idGroup.appendChild(el("span", { class: "mono kanban-card-id", text: id || "—" }));
+  if (stateName) idGroup.appendChild(el("span", { class: "pill " + stateName, text: stateName }));
   if (tone.chip) {
     idGroup.appendChild(el("span", {
       class: "kanban-age-chip " + tone.cls + "-chip",
-      title: t.status === "audit_ready" ? "audit-stale" : "in-progress stale",
+      title: stateName === "audit_ready" || stateName === "review" ? "audit-stale" : "in-progress stale",
       text: tone.chip,
     }));
   }
   top.appendChild(idGroup);
-  const ownerName = t.claimed_by || t.agent || "";
+  const ownerName = t.claimed_by || t.owner || t.agent || "";
   if (ownerName) {
     const stale = isClaimStale(t.claim_until);
     const ownerBadge = el("span", { class: "badge kanban-owner" + (stale ? " kanban-owner-stale" : ""), title: stale ? "claim expired" : "owner" });
@@ -646,22 +650,29 @@ function kanbanCard(t) {
   }
   card.appendChild(top);
 
-  const task = el("div", { class: "kanban-card-task", text: t.task || "" });
+  const task = el("div", { class: "kanban-card-task", text: ticketTitle(t) });
   card.appendChild(task);
 
   const badges = el("div", { class: "kanban-badges" });
   if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + t.priority.toLowerCase(), text: t.priority }));
-  if (t.kind && t.kind !== "task") badges.appendChild(el("span", { class: "badge", text: t.kind }));
-  if (t.category) badges.appendChild(el("span", { class: "badge", text: t.category }));
+  const kind = t.kind || t.type || "";
+  const area = t.category || t.area || "";
+  if (kind && kind !== "task") badges.appendChild(el("span", { class: "badge", text: kind }));
+  if (area) badges.appendChild(el("span", { class: "badge", text: area }));
   const blocked = (t.blocked_by || []).filter((s) => s);
   if (blocked.length > 0) badges.appendChild(el("span", { class: "badge badge-warn", text: "⛔ " + blocked.length }));
   if ((t.evidence || []).length > 0) badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ ev" }));
-  if (t.audit_result === "pass") badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ audit" }));
+  const eventResult = t.event && t.event.result;
+  if (t.audit_result === "pass" || eventResult === "pass") badges.appendChild(el("span", { class: "badge badge-ok", text: "✓ audit" }));
   if (t.branch) badges.appendChild(el("span", { class: "badge badge-mono", text: t.branch }));
   if (badges.childNodes.length > 0) card.appendChild(badges);
 
   return card;
 }
+
+function ticketID(t) { return (t && (t.ticket || t.id)) || ""; }
+function ticketState(t) { return (t && (t.status || t.state)) || ""; }
+function ticketTitle(t) { return (t && (t.task || t.title)) || ""; }
 
 /* Audit queue */
 function describeAge(ts) {
@@ -756,24 +767,28 @@ async function openDrawer(ticketId) {
 
 function renderDrawerHeader(d) {
   const head = el("div", { class: "drawer-head" });
-  head.appendChild(el("span", { class: "mono drawer-id", text: d.ticket || "—" }));
   const latest = d.latest || {};
-  if (latest.status) head.appendChild(el("span", { class: "pill " + latest.status, text: latest.status }));
+  head.appendChild(el("span", { class: "mono drawer-id", text: d.ticket || latest.id || "—" }));
+  const stateName = ticketState(latest);
+  if (stateName) head.appendChild(el("span", { class: "pill " + stateName, text: stateName }));
   return head;
 }
 
 function renderDrawerSummary(latest, invalidatedVia, history) {
   const wrap = el("div", { class: "drawer-summary" });
-  if (latest.task) wrap.appendChild(el("div", { class: "drawer-task", text: latest.task }));
+  if (ticketTitle(latest)) wrap.appendChild(el("div", { class: "drawer-task", text: ticketTitle(latest) }));
+  const event = latest.event || {};
   const rows = [
-    ["parent",      latest.parent_ticket],
-    ["category",    latest.category],
+    ["parent",      latest.parent_ticket || latest.parent],
+    ["category",    latest.category || latest.area],
+    ["type",        latest.kind || latest.type],
     ["branch",      latest.branch],
     ["claimed_by",  latest.claimed_by],
     ["claim_until", latest.claim_until ? fmtTS(latest.claim_until) : ""],
     ["handoff_to",  latest.handoff_to],
-    ["agent",       latest.agent],
-    ["role",        latest.role],
+    ["agent",       latest.agent || latest.owner],
+    ["role",        latest.role || event.role],
+    ["event.result", event.result],
   ];
   const dl = el("dl", { class: "drawer-meta" });
   for (const [k, v] of rows) {
@@ -788,10 +803,11 @@ function renderDrawerSummary(latest, invalidatedVia, history) {
     for (const b of blocked) dd.appendChild(el("span", { class: "badge badge-warn", text: b }));
     dl.appendChild(dd);
   }
-  if (latest.reviewed_n != null) {
+  const reviewedN = latest.reviewed_n != null ? latest.reviewed_n : event.reviewed_n;
+  if (reviewedN != null) {
     dl.appendChild(el("dt", { text: "reviewed_n" }));
     const dd = el("dd");
-    const targetN = Number(latest.reviewed_n);
+    const targetN = Number(reviewedN);
     const inHistory = Array.isArray(history) && history.some((r) => Number(r && r.n) === targetN);
     if (inHistory) {
       const a = el("a", {
@@ -861,10 +877,12 @@ function parseProvenance(notes) {
 
 function renderDrawerDetails(latest, history) {
   const wrap = el("div", { class: "drawer-details" });
+  const event = latest.event || {};
 
   // notes (with provenance parsing)
-  if (latest.notes) {
-    const prov = parseProvenance(latest.notes);
+  const notes = latest.notes || event.notes || "";
+  if (notes) {
+    const prov = parseProvenance(notes);
     const section = el("section", { class: "drawer-section" });
     section.appendChild(el("h4", { class: "drawer-section-title", text: "notes" }));
     if (prov.markers.length > 0) {
@@ -878,7 +896,7 @@ function renderDrawerDetails(latest, history) {
     if (prov.rest) {
       section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: prov.rest }));
     } else if (prov.markers.length === 0) {
-      section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: latest.notes }));
+      section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: notes }));
     }
     wrap.appendChild(section);
   }
@@ -888,6 +906,13 @@ function renderDrawerDetails(latest, history) {
     const section = el("section", { class: "drawer-section" });
     section.appendChild(el("h4", { class: "drawer-section-title", text: "decision" }));
     section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: latest.decision }));
+    wrap.appendChild(section);
+  }
+
+  if (event.summary) {
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "event.summary" }));
+    section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: event.summary }));
     wrap.appendChild(section);
   }
 
