@@ -15,6 +15,7 @@ let state = {
   worklogSort: "newest",
   pageSig: {},
   projectsSig: "",
+  verifyStrict: false,
 };
 let pollTimer = null;
 
@@ -366,7 +367,13 @@ async function renderDashboard(root, background) {
     aaTile.appendChild(list);
   }
   aaBand.appendChild(aaTile);
+
+  // Verify status widget (isolated fetch — failures don't poison the dashboard).
+  const verifyTile = el("div", { class: "metric verify-status", id: "verify-status-tile" });
+  verifyTile.appendChild(buildVerifyTileBody(null, null));
+  aaBand.appendChild(verifyTile);
   root.appendChild(aaBand);
+  refreshVerifyTile();
 
   // Parents table.
   root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: "Parent completion" })));
@@ -417,6 +424,104 @@ async function renderDashboard(root, background) {
     table.appendChild(tb);
     root.appendChild(table);
   }
+}
+
+/* Verify status widget — isolated fetch so verify errors stay local. */
+function buildVerifyTileBody(payload, errMsg) {
+  const frag = document.createDocumentFragment();
+  const head = el("div", { class: "verify-status-head" });
+  head.appendChild(el("div", { class: "label", text: "Verify status" }));
+  const toggle = el("div", { class: "verify-toggle" });
+  const btnDefault = el("button", {
+    class: state.verifyStrict ? "" : "active",
+    text: "default",
+    onclick: () => { if (state.verifyStrict) { state.verifyStrict = false; refreshVerifyTile(); } },
+  });
+  const btnStrict = el("button", {
+    class: state.verifyStrict ? "active" : "",
+    text: "strict",
+    onclick: () => { if (!state.verifyStrict) { state.verifyStrict = true; refreshVerifyTile(); } },
+  });
+  toggle.appendChild(btnDefault);
+  toggle.appendChild(btnStrict);
+  head.appendChild(toggle);
+  frag.appendChild(head);
+
+  if (errMsg) {
+    frag.appendChild(el("div", { class: "value", text: "—" }));
+    frag.appendChild(el("div", { class: "delta", text: "verify: " + errMsg }));
+    return frag;
+  }
+  if (!payload) {
+    frag.appendChild(el("div", { class: "value", text: "…" }));
+    frag.appendChild(el("div", { class: "delta", text: "loading" }));
+    return frag;
+  }
+
+  const fails = payload.fail_count || 0;
+  const warns = payload.warn_count || 0;
+  frag.appendChild(el("div", { class: "value", text: fails + " / " + warns }));
+
+  const ran = payload.ran_at ? describeAgo(payload.ran_at) : "";
+  const sub = (fails === 0 && warns === 0)
+    ? "clean" + (ran ? " · ran " + ran : "")
+    : fails + " fail · " + warns + " warn" + (ran ? " · ran " + ran : "");
+  frag.appendChild(el("div", { class: "delta", text: sub }));
+
+  const byCode = payload.by_code || {};
+  const codes = Object.keys(byCode).map(k => ({ code: k, count: byCode[k] }));
+  codes.sort((a, b) => b.count - a.count || (a.code < b.code ? -1 : 1));
+  const top = codes.slice(0, 3);
+  if (top.length > 0) {
+    const list = el("ul", { class: "verify-codes" });
+    for (const c of top) {
+      const li = el("li");
+      li.appendChild(el("span", { class: "mono", text: c.code }));
+      li.appendChild(document.createTextNode(" · " + c.count));
+      list.appendChild(li);
+    }
+    frag.appendChild(list);
+  }
+  return frag;
+}
+
+function describeAgo(ts) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  const sec = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return sec + "s ago";
+  const min = Math.round(sec / 60);
+  if (min < 60) return min + "m ago";
+  const hr = Math.round(min / 60);
+  return hr + "h ago";
+}
+
+async function refreshVerifyTile() {
+  const tile = $("verify-status-tile");
+  if (!tile) return;
+  // Show loading state immediately on toggle / first call.
+  tile.innerHTML = "";
+  tile.classList.remove("calm", "fails");
+  tile.appendChild(buildVerifyTileBody(null, null));
+  const pid = state.projectId;
+  const url = "/api/projects/" + encodeURIComponent(pid) + "/verify" + (state.verifyStrict ? "?strict=1" : "");
+  let payload = null;
+  let errMsg = null;
+  try {
+    payload = await getJSON(url);
+  } catch (e) {
+    errMsg = "API error";
+  }
+  // Tile may have been replaced by a navigation in the meantime.
+  const live = $("verify-status-tile");
+  if (!live) return;
+  live.innerHTML = "";
+  live.classList.remove("calm", "fails");
+  if (payload) {
+    if ((payload.fail_count || 0) > 0) live.classList.add("fails");
+    if ((payload.fail_count || 0) === 0 && (payload.warn_count || 0) === 0) live.classList.add("calm");
+  }
+  live.appendChild(buildVerifyTileBody(payload, errMsg));
 }
 
 /* Kanban */
