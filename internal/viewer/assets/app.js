@@ -26,6 +26,7 @@ const ICON_PATHS = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  block: '<circle cx="12" cy="12" r="9"/><path d="M5.64 5.64l12.72 12.72"/>',
 };
 function icon(name, extraClass) {
   const ns = "http://www.w3.org/2000/svg";
@@ -704,7 +705,12 @@ function kanbanCard(t) {
   if (kind && kind !== "task") badges.appendChild(el("span", { class: "badge", text: kind }));
   if (area) badges.appendChild(el("span", { class: "badge", text: area }));
   const blocked = (t.blocked_by || []).filter((s) => s);
-  if (blocked.length > 0) badges.appendChild(el("span", { class: "badge badge-warn", text: "⛔ " + blocked.length }));
+  if (blocked.length > 0) {
+    const b = el("span", { class: "badge badge-warn" });
+    b.appendChild(icon("block"));
+    b.appendChild(document.createTextNode(" " + blocked.length));
+    badges.appendChild(b);
+  }
   if ((t.evidence || []).length > 0) {
     const b = el("span", { class: "badge badge-ok" });
     b.appendChild(icon("check"));
