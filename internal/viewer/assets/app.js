@@ -55,6 +55,14 @@ function describeClaimAge(claimUntil) {
   if (absMin >= 60) return "expires in " + Math.round(absMin / 60) + "h";
   return "expires in " + absMin + "m";
 }
+// formatLatencyBucket renders an hour value as either "Xh" (integer hours, <24h)
+// or "X.Yd" (one-decimal days). Sub-hour precision is intentionally dropped.
+function formatLatencyBucket(hours) {
+  if (!isFinite(hours) || hours <= 0) return "0h";
+  if (hours < 24) return Math.round(hours) + "h";
+  const days = hours / 24;
+  return (Math.round(days * 10) / 10).toFixed(1) + "d";
+}
 async function getJSON(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(path + " → " + r.status);
@@ -250,6 +258,34 @@ async function renderDashboard(root, background) {
     el("div", { class: "value", text: (h.closed_without_worklog || 0) + (h.orphan_worklog || 0) + (h.invalidated || 0) + (h.missing_evidence || 0) }),
     el("div", { class: "delta", text: "closed " + (h.closed_without_worklog || 0) + " · orphan " + (h.orphan_worklog || 0) + " · inv " + (h.invalidated || 0) + " · noev " + (h.missing_evidence || 0) }),
   ));
+
+  // Lifecycle latency tiles: cycle time + audit latency.
+  const lc = d.lifecycle || {};
+  const cycleCount = lc.completed_cycle_count || 0;
+  const cycleTile = el("div", { class: "metric" });
+  cycleTile.appendChild(el("div", { class: "label", text: "Cycle time" }));
+  if (cycleCount === 0) {
+    cycleTile.appendChild(el("div", { class: "value", text: "—" }));
+    cycleTile.appendChild(el("div", { class: "delta", text: "no completed cycles" }));
+  } else {
+    cycleTile.appendChild(el("div", { class: "value", text: formatLatencyBucket(lc.median_cycle_hours || 0) }));
+    cycleTile.appendChild(el("div", { class: "delta", text: "p90 " + formatLatencyBucket(lc.p90_cycle_hours || 0) + " · " + cycleCount + " done" }));
+  }
+  band.appendChild(cycleTile);
+
+  const pendingAudit = lc.pending_audit_count || 0;
+  const auditLatencyTile = el("div", { class: "metric" });
+  auditLatencyTile.appendChild(el("div", { class: "label", text: "Audit latency" }));
+  if (pendingAudit === 0 && cycleCount === 0) {
+    auditLatencyTile.appendChild(el("div", { class: "value", text: "—" }));
+    auditLatencyTile.appendChild(el("div", { class: "delta", text: "no audit history" }));
+  } else {
+    auditLatencyTile.appendChild(el("div", { class: "value", text: formatLatencyBucket(lc.median_audit_latency_hours || 0) }));
+    let sub = "p90 " + formatLatencyBucket(lc.p90_audit_latency_hours || 0);
+    if (pendingAudit > 0) sub += " · " + pendingAudit + " pending";
+    auditLatencyTile.appendChild(el("div", { class: "delta", text: sub }));
+  }
+  band.appendChild(auditLatencyTile);
 
   // Stale claims tile (expired + near-expiring agent claims on non-terminal tickets).
   const sc = d.stale_claims || { expired: 0, near_expiring: 0, samples: [] };
