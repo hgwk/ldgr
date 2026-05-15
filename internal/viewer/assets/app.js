@@ -145,6 +145,7 @@ async function loadProjects(opts) {
     if (!state.projectId && projects.length > 0) {
       selectProject(projects[0].project_id);
     } else if (state.projectId) {
+      if (!background) loadHeader();
       loadPage({ background });
     }
   } catch (e) {
