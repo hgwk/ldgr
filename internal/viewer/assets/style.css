@@ -626,3 +626,10 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 .tree-task { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-ts { font-size: 11px; }
 .tree-node + .tree-node { margin-top: 1px; }
+
+/* Audit queue */
+.audit-subtitle { margin: 4px 0 12px; font-size: 12px; }
+.audit-empty { padding: 24px; text-align: center; }
+.audit-table tr.audit-row { cursor: pointer; }
+.audit-table tr.audit-row:hover { background: var(--surface-2); }
+.audit-task { max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

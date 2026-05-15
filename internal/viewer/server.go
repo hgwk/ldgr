@@ -269,6 +269,9 @@ func (s *Server) handleProjectSubroute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, BuildDashboard(proj.Tickets, proj.Worklog, s.Now()))
 	case "kanban":
 		writeJSON(w, BuildKanban(proj.Tickets))
+	case "audit-queue":
+		latest := LatestTickets(proj.Tickets)
+		writeJSON(w, map[string]any{"items": BuildAuditQueue(latest, s.Now())})
 	default:
 		// detect "tickets/<id>"
 		if rest, ok := strings.CutPrefix(sub, "tickets/"); ok && rest != "" {
