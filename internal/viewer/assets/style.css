@@ -407,6 +407,24 @@ table.dense tbody tr:hover { background: var(--surface-2); }
   transition: border-color 100ms;
 }
 .kanban-card:hover { border-color: var(--accent); }
+.kanban-card-stale {
+  border-left: 3px solid var(--status-blocked);
+}
+.kanban-card-audit-stale {
+  border-left: 3px solid var(--status-audit_ready);
+}
+.kanban-age-chip {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+}
+.kanban-card-stale-chip { color: var(--status-blocked); border-color: var(--status-blocked); }
+.kanban-card-audit-stale-chip { color: var(--status-audit_ready); border-color: var(--status-audit_ready); }
 .kanban-card-top {
   display: flex; justify-content: space-between; align-items: baseline;
   gap: var(--space-2);

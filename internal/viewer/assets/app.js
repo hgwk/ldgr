@@ -1,6 +1,10 @@
 "use strict";
 
 const POLL_MS = 5000;
+// Kanban age thresholds: cards older than these on their current status get
+// a subtle stale tone (border only, no full-card alarm coloring).
+const STALE_IN_PROGRESS_MS = 5 * 86400000;
+const STALE_AUDIT_MS = 2 * 86400000;
 let state = {
   projectId: null,
   page: "dashboard",
@@ -468,13 +472,37 @@ async function renderKanban(root, background) {
   root.appendChild(board);
 }
 
+// kanbanAgeTone returns CSS classes + an optional age chip label based on how
+// long the ticket has been parked in its current status. Subtle by design.
+function kanbanAgeTone(t) {
+  if (!t || !t.ts) return { cls: "", chip: "" };
+  const d = new Date(t.ts);
+  if (isNaN(d.getTime())) return { cls: "", chip: "" };
+  const ageMs = Date.now() - d.getTime();
+  if (t.status === "in_progress" && ageMs >= STALE_IN_PROGRESS_MS) {
+    return { cls: "kanban-card-stale", chip: Math.floor(ageMs / 86400000) + "d" };
+  }
+  if (t.status === "audit_ready" && ageMs >= STALE_AUDIT_MS) {
+    return { cls: "kanban-card-audit-stale", chip: Math.floor(ageMs / 86400000) + "d" };
+  }
+  return { cls: "", chip: "" };
+}
+
 function kanbanCard(t) {
-  const card = el("div", { class: "kanban-card", onclick: () => openDrawer(t.ticket) });
+  const tone = kanbanAgeTone(t);
+  const card = el("div", { class: "kanban-card" + (tone.cls ? " " + tone.cls : ""), onclick: () => openDrawer(t.ticket) });
 
   const top = el("div", { class: "kanban-card-top" });
   const idGroup = el("span", { class: "kanban-card-idgroup" });
   idGroup.appendChild(el("span", { class: "mono kanban-card-id", text: t.ticket || "—" }));
   if (t.status) idGroup.appendChild(el("span", { class: "pill " + t.status, text: t.status }));
+  if (tone.chip) {
+    idGroup.appendChild(el("span", {
+      class: "kanban-age-chip " + tone.cls + "-chip",
+      title: t.status === "audit_ready" ? "audit-stale" : "in-progress stale",
+      text: tone.chip,
+    }));
+  }
   top.appendChild(idGroup);
   const ownerName = t.claimed_by || t.agent || "";
   if (ownerName) {
