@@ -352,14 +352,35 @@ func stringField(r ledger.Row, k string) string {
 
 // Dashboard mirrors the JSON shape of GET /api/projects/{id}/dashboard.
 type Dashboard struct {
-	Progress Progress         `json:"progress"`
-	Parents  []ParentProgress `json:"parents"`
-	Audit    AuditPipeline    `json:"audit"`
-	Health   DeliveryHealth   `json:"health"`
-	Recent   []RecentItem     `json:"recent"`
-	Priority PriorityCounts   `json:"priority"`
-	Kind     []KindCount      `json:"kind"`
+	Progress    Progress         `json:"progress"`
+	Parents     []ParentProgress `json:"parents"`
+	Audit       AuditPipeline    `json:"audit"`
+	Health      DeliveryHealth   `json:"health"`
+	Recent      []RecentItem     `json:"recent"`
+	Priority    PriorityCounts   `json:"priority"`
+	Kind        []KindCount      `json:"kind"`
+	StaleClaims StaleClaims      `json:"stale_claims"`
 }
+
+// StaleClaims summarizes expired and near-expiring agent claims on
+// non-terminal tickets. Computed from latest ticket rows only.
+type StaleClaims struct {
+	Expired      int                `json:"expired"`
+	NearExpiring int                `json:"near_expiring"`
+	Samples      []StaleClaimSample `json:"samples"`
+}
+
+// StaleClaimSample is a small projection of a stale-claimed ticket for the
+// dashboard tile (used to render up to 3 most overdue ids).
+type StaleClaimSample struct {
+	TicketID   string `json:"ticket_id"`
+	ClaimUntil string `json:"claim_until"`
+	ClaimedBy  string `json:"claimed_by"`
+}
+
+// nearExpiringClaimWindow is the lookahead window for "near-expiring" claims.
+// Intentionally a constant (not configurable) per Task A3.
+const nearExpiringClaimWindow = 2 * time.Hour
 
 type Progress struct {
 	Done      int `json:"done"`
@@ -650,15 +671,79 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 		kinds = append(kinds, KindCount{Kind: p.k, Count: p.v})
 	}
 
+	stale := computeStaleClaims(latest, now)
+
 	return Dashboard{
-		Progress: Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
-		Parents:  parents,
-		Audit:    AuditPipeline{AuditReady: auditReady, ChangesRequested: changesReq, WeakDone: weakDone},
-		Health:   DeliveryHealth{ClosedWithoutWorklog: closed, OrphanWorklog: orphan, Invalidated: invalidated, MissingEvidence: missingEv},
-		Recent:   recent,
-		Priority: pc,
-		Kind:     kinds,
+		Progress:    Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
+		Parents:     parents,
+		Audit:       AuditPipeline{AuditReady: auditReady, ChangesRequested: changesReq, WeakDone: weakDone},
+		Health:      DeliveryHealth{ClosedWithoutWorklog: closed, OrphanWorklog: orphan, Invalidated: invalidated, MissingEvidence: missingEv},
+		Recent:      recent,
+		Priority:    pc,
+		Kind:        kinds,
+		StaleClaims: stale,
 	}
+}
+
+// computeStaleClaims tallies expired and near-expiring claims across the
+// latest ticket rows. Tickets with terminal status (done/cancelled) are
+// excluded. Rows with missing/unparseable claim_until are ignored silently.
+// Samples are the most overdue (then soonest-to-expire) up to 3 entries.
+func computeStaleClaims(latest []ledger.Row, now time.Time) StaleClaims {
+	type candidate struct {
+		ticketID   string
+		claimUntil string
+		claimedBy  string
+		until      time.Time
+		expired    bool
+	}
+	var cands []candidate
+	out := StaleClaims{}
+	horizon := now.Add(nearExpiringClaimWindow)
+	for _, r := range latest {
+		s, _ := r["status"].(string)
+		if s == "done" || s == "cancelled" {
+			continue
+		}
+		cu, _ := r["claim_until"].(string)
+		if cu == "" {
+			continue
+		}
+		until, err := time.Parse(time.RFC3339, cu)
+		if err != nil {
+			continue
+		}
+		id, _ := r["ticket"].(string)
+		by, _ := r["claimed_by"].(string)
+		switch {
+		case until.Before(now):
+			out.Expired++
+			cands = append(cands, candidate{id, cu, by, until, true})
+		case until.Before(horizon):
+			out.NearExpiring++
+			cands = append(cands, candidate{id, cu, by, until, false})
+		}
+	}
+	// Sort: expired first, then by earliest until (most overdue → soonest).
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].expired != cands[j].expired {
+			return cands[i].expired
+		}
+		if !cands[i].until.Equal(cands[j].until) {
+			return cands[i].until.Before(cands[j].until)
+		}
+		return cands[i].ticketID < cands[j].ticketID
+	})
+	if len(cands) > 3 {
+		cands = cands[:3]
+	}
+	out.Samples = make([]StaleClaimSample, 0, len(cands))
+	for _, c := range cands {
+		out.Samples = append(out.Samples, StaleClaimSample{
+			TicketID: c.ticketID, ClaimUntil: c.claimUntil, ClaimedBy: c.claimedBy,
+		})
+	}
+	return out
 }
 
 // --- Kanban (control tower) ---------------------------------------------------

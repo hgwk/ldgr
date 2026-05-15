@@ -441,6 +441,25 @@ table.dense tbody tr:hover { background: var(--surface-2); }
   opacity: 0.85;
 }
 
+/* Stale claims dashboard tile */
+.metric.stale-claims .value { color: var(--status-blocked); }
+.metric.stale-claims.calm .value { color: inherit; opacity: 0.4; }
+.metric.stale-claims.calm .delta { opacity: 0.6; }
+.stale-claims-samples {
+  list-style: none;
+  margin: var(--space-2) 0 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.stale-claims-samples li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stale-claims-samples a { text-decoration: none; }
+.stale-claims-samples a:hover { text-decoration: underline; }
+
 /* Drawer */
 .drawer-head {
   display: flex; align-items: baseline; gap: var(--space-3);

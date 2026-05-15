@@ -42,6 +42,19 @@ function isClaimStale(claimUntil) {
   if (isNaN(d.getTime())) return false;
   return d.getTime() < Date.now();
 }
+function describeClaimAge(claimUntil) {
+  if (!claimUntil) return "";
+  const d = new Date(claimUntil);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = d.getTime() - Date.now();
+  const absMin = Math.max(1, Math.round(Math.abs(diffMs) / 60000));
+  if (diffMs < 0) {
+    if (absMin >= 60) return "expired " + Math.round(absMin / 60) + "h ago";
+    return "expired " + absMin + "m ago";
+  }
+  if (absMin >= 60) return "expires in " + Math.round(absMin / 60) + "h";
+  return "expires in " + absMin + "m";
+}
 async function getJSON(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(path + " → " + r.status);
@@ -236,6 +249,36 @@ async function renderDashboard(root, background) {
     el("div", { class: "value", text: (h.closed_without_worklog || 0) + (h.orphan_worklog || 0) + (h.invalidated || 0) + (h.missing_evidence || 0) }),
     el("div", { class: "delta", text: "closed " + (h.closed_without_worklog || 0) + " · orphan " + (h.orphan_worklog || 0) + " · inv " + (h.invalidated || 0) + " · noev " + (h.missing_evidence || 0) }),
   ));
+
+  // Stale claims tile (expired + near-expiring agent claims on non-terminal tickets).
+  const sc = d.stale_claims || { expired: 0, near_expiring: 0, samples: [] };
+  const scTotal = (sc.expired || 0) + (sc.near_expiring || 0);
+  const scTile = el("div", { class: "metric stale-claims" + (scTotal === 0 ? " calm" : "") });
+  scTile.appendChild(el("div", { class: "label", text: "Stale claims" }));
+  scTile.appendChild(el("div", { class: "value", text: String(scTotal) }));
+  scTile.appendChild(el("div", { class: "delta", text:
+    scTotal === 0
+      ? "no stale claims"
+      : (sc.expired || 0) + " expired · " + (sc.near_expiring || 0) + " expiring soon"
+  }));
+  const samples = sc.samples || [];
+  if (samples.length > 0) {
+    const list = el("ul", { class: "stale-claims-samples" });
+    for (const s of samples) {
+      const li = el("li");
+      const idLink = el("a", {
+        class: "mono",
+        href: "#",
+        text: s.ticket_id || "—",
+        onclick: (e) => { e.preventDefault(); openDrawer(s.ticket_id); },
+      });
+      li.appendChild(idLink);
+      li.appendChild(document.createTextNode(" " + describeClaimAge(s.claim_until)));
+      list.appendChild(li);
+    }
+    scTile.appendChild(list);
+  }
+  band.appendChild(scTile);
   root.appendChild(band);
 
   // Priority band
