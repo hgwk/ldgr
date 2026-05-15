@@ -142,6 +142,10 @@ async function loadProjects(opts) {
       state.projectsSig = sig;
       renderProjectList(projects);
     }
+    const ids = projects.map((p) => p.project_id);
+    if (state.projectId && !ids.includes(state.projectId)) {
+      state.projectId = null;
+    }
     if (!state.projectId && projects.length > 0) {
       selectProject(projects[0].project_id);
     } else if (state.projectId) {
