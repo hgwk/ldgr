@@ -1,20 +1,51 @@
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --border: #e2e5ea;
-  --border-strong: #c8ced8;
-  --fg: #1a1d22;
-  --muted: #6b7280;
-  --accent: #2563eb;
+  /* shadcn/ui neutral preset — design tokens */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --shadcn-muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent-bg: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --shadcn-border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 
-  --status-open: #6b7280;
-  --status-in_progress: #2563eb;
-  --status-blocked: #dc2626;
-  --status-changes_requested: #b45309;
-  --status-audit_ready: #7c3aed;
-  --status-done: #059669;
-  --status-cancelled: #9ca3af;
+  /* Backwards-compatible aliases used throughout the existing CSS */
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-2: var(--shadcn-muted);
+  --border: var(--shadcn-border);
+  --border-strong: var(--ring);
+  --fg: var(--foreground);
+  --muted: var(--muted-foreground);
+  --accent: var(--primary);
+
+  /* Lifecycle status palette — semantic, kept multi-hue on top of neutral chrome */
+  --status-open: oklch(0.556 0 0);
+  --status-in_progress: oklch(0.55 0.22 264);
+  --status-blocked: var(--destructive);
+  --status-changes_requested: oklch(0.65 0.16 60);
+  --status-audit_ready: oklch(0.55 0.25 295);
+  --status-done: oklch(0.6 0.17 155);
+  --status-cancelled: oklch(0.708 0 0);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -23,8 +54,44 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --radius: 6px;
   --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --shadcn-muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent-bg: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --shadcn-border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* Dark-mode adjustments for lifecycle status (more saturated for legibility) */
+  --status-open: oklch(0.708 0 0);
+  --status-in_progress: oklch(0.7 0.2 264);
+  --status-changes_requested: oklch(0.75 0.16 60);
+  --status-audit_ready: oklch(0.7 0.22 295);
+  --status-done: oklch(0.72 0.18 155);
+  --status-cancelled: oklch(0.556 0 0);
 }
 
 * { box-sizing: border-box; }
@@ -41,8 +108,9 @@ body {
 
 /* Sidebar */
 #sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-right: 1px solid var(--sidebar-border);
   padding: var(--space-4);
   overflow-y: auto;
   height: 100dvh;
@@ -67,8 +135,8 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
-.nav-list li:hover { background: var(--surface-2); }
-.nav-list li.active { background: var(--accent); color: white; }
+.nav-list li:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.nav-list li.active { background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); }
 .nav-list .meta { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
 .nav-list li.active .meta { color: rgba(255,255,255,0.85); }
 
@@ -243,8 +311,9 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 #drawer {
   position: fixed; top: 0; right: 0; bottom: 0;
   width: min(520px, 100vw);
-  background: var(--surface);
-  border-left: 1px solid var(--border-strong);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border-left: 1px solid var(--border);
   padding: var(--space-5);
   overflow-y: auto;
   transform: translateX(100%);
@@ -368,20 +437,21 @@ table.dense tbody tr:hover { background: var(--surface-2); }
   .kanban-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  body { grid-template-columns: 1fr; height: auto; overflow: visible; }
-  #sidebar { height: auto; border-right: none; border-bottom: 1px solid var(--border); }
-  #main { height: auto; }
-  .kanban-board { max-height: none; }
-  .kanban-col-list { overflow-y: visible; }
+  body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: 100dvh; overflow: hidden; }
+  #sidebar { height: auto; max-height: 32dvh; border-right: none; border-bottom: 1px solid var(--border); }
+  #main { height: auto; min-height: 0; overflow-y: auto; }
+  .kanban-board { max-height: calc(68dvh - 120px); }
+  .kanban-col-list { overflow-y: auto; }
 }
 @media (max-width: 540px) {
   .kanban-board { grid-template-columns: 1fr; }
 }
 
 .kanban-bar {
-  display: flex; gap: var(--space-2); margin-bottom: var(--space-3);
+  display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
 }
-.kanban-bar select {
+.kanban-bar select,
+.kanban-bar input {
   font: inherit;
   padding: 4px var(--space-2);
   border: 1px solid var(--border);
@@ -389,6 +459,7 @@ table.dense tbody tr:hover { background: var(--surface-2); }
   background: var(--surface);
   color: var(--fg);
 }
+.kanban-bar input { min-width: 220px; }
 
 .badge-prio { font-weight: 600; }
 .badge-prio-p0 { color: white; background: #dc2626; border-color: #dc2626; }
