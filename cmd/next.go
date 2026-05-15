@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/hgwk/ldgr/internal/config"
 	"github.com/hgwk/ldgr/internal/gitutil"
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
@@ -41,6 +42,7 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	}
 
 	dir := resolveTarget(*target)
+	writingLanguage := loadWritingLanguage(dir)
 
 	// Read ledger files (both modes need them).
 	ticketRows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
@@ -53,6 +55,10 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	if *ticket == "" {
 		// Project-wide mode.
 		pg := guidance.ComputeProject(ticketRows, worklog, *role)
+		if isCanonicalTarget(dir) {
+			pg = guidance.ComputeCanonicalProject(ticketRows, worklog, *role)
+		}
+		pg.WritingLanguage = writingLanguage
 		if *gitFlag && gitutil.IsWorkTree(dir) {
 			changed := gitutil.ChangedFiles(dir)
 			findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), "")
@@ -85,12 +91,24 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Ticket-scoped mode.
-	latest, ok := findLatestTicket(ticketRows, *ticket)
+	var latest ledger.Row
+	var ok bool
+	if isCanonicalTarget(dir) {
+		latest, ok = findLatestCanonicalTicket(ticketRows, *ticket)
+	} else {
+		latest, ok = findLatestTicket(ticketRows, *ticket)
+	}
 	if !ok {
 		fmt.Fprintf(stderr, "ticket %q not found\n", *ticket)
 		return 1
 	}
-	g := guidance.Compute(latest, worklog)
+	var g guidance.Guidance
+	if isCanonicalTarget(dir) {
+		g = guidance.ComputeCanonical(latest, worklog)
+	} else {
+		g = guidance.Compute(latest, worklog)
+	}
+	g.WritingLanguage = writingLanguage
 	if *gitFlag && gitutil.IsWorkTree(dir) {
 		changed := gitutil.ChangedFiles(dir)
 		findings := guidance.CompareGitToTickets(changed, latestActive(ticketRows), *ticket)
@@ -125,6 +143,14 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, guidance.RenderText(g))
 	}
 	return 0
+}
+
+func loadWritingLanguage(dir string) string {
+	cfg, err := config.Load(filepath.Join(dir, "ledger", "config.json"))
+	if err != nil {
+		return ""
+	}
+	return cfg.WritingLanguage
 }
 
 // latestActive returns the latest row for each ticket with active status.

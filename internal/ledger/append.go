@@ -3,6 +3,7 @@ package ledger
 import (
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/hgwk/ldgr/internal/locks"
 )
@@ -25,6 +26,7 @@ func Append(jsonlPath, lockPath string, row Row) (Row, error) {
 	}
 	next := len(rows) + 1
 	row["n"] = next
+	ensureMonotonicTS(row, rows)
 
 	data, err := json.Marshal(row)
 	if err != nil {
@@ -39,4 +41,27 @@ func Append(jsonlPath, lockPath string, row Row) (Row, error) {
 		return nil, err
 	}
 	return row, f.Close()
+}
+
+func ensureMonotonicTS(row Row, rows []Row) {
+	if len(rows) == 0 {
+		return
+	}
+	ts, ok := row["ts"].(string)
+	if !ok || ts == "" {
+		return
+	}
+	lastTS, _ := rows[len(rows)-1]["ts"].(string)
+	if lastTS == "" {
+		return
+	}
+	last, err := time.Parse(time.RFC3339Nano, lastTS)
+	if err != nil {
+		return
+	}
+	cur, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil || cur.After(last) {
+		return
+	}
+	row["ts"] = last.Add(time.Second).UTC().Format("2006-01-02T15:04:05Z")
 }

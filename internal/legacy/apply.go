@@ -15,6 +15,8 @@ type ApplyOpts struct {
 	ArchiveOriginals bool
 	// Force suppresses the safety check that rejects shrinking ledgers.
 	Force bool
+	// BackupPrefix prefixes backup directory names, e.g. "legacy-to-v1-".
+	BackupPrefix string
 	// Clock allows tests to inject deterministic timestamps for the backup dir.
 	Clock func() time.Time
 }
@@ -40,7 +42,7 @@ func Apply(plan Plan, opts ApplyOpts) error {
 	}
 	defer release()
 
-	stamp := opts.now().Format("20060102-150405")
+	stamp := opts.BackupPrefix + opts.now().Format("20060102-150405")
 	backupDir := filepath.Join(ledgerDir, ".backup", stamp)
 
 	for _, c := range plan.Changes {

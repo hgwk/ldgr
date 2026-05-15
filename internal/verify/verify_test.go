@@ -77,6 +77,21 @@ func TestVerify_NonDecreasingTsFails(t *testing.T) {
 	}
 }
 
+func TestVerify_NonDecreasingTsParsesFractionalTimestamps(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00.500Z","ticket":"a","parent_ticket":"ROOT","agent":"codex","role":"impl","status":"open","task":"t","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":2,"ts":"2026-05-14T10:00:00Z","ticket":"b","parent_ticket":"ROOT","agent":"codex","role":"impl","status":"open","task":"t","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasFailCode(report, "TS_NOT_INCREASING") {
+		t.Fatalf("expected parsed fractional ts ordering fail, got %+v", report.Fails)
+	}
+}
+
 func TestVerify_BadStatusFails(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"ledger/config.json": validConfigJSON(),
@@ -88,6 +103,71 @@ func TestVerify_BadStatusFails(t *testing.T) {
 	report, _ := Run(dir)
 	if len(report.Fails) == 0 {
 		t.Fatalf("expected status enum fail")
+	}
+}
+
+func TestVerify_SchemaCanonicalValidLedgerPasses(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONCanonical(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"ready","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":[],"event":{"actor":"codex","role":"planner","summary":"opened","notes":""}}
+{"n":2,"ts":"2026-05-14T10:01:00Z","id":"T-1","parent":"ROOT","type":"task","state":"doing","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":[],"event":{"actor":"codex","role":"implementer","summary":"started","notes":""}}
+{"n":3,"ts":"2026-05-14T10:02:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"codex","role":"implementer","summary":"ready for review","notes":""}}
+{"n":4,"ts":"2026-05-14T10:03:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":3,"summary":"passed","notes":""}}
+`,
+		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:04:00Z","ticket":"T-1","actor":"codex","title":"build ui shipped","summary":"implemented","paths":["ui.tsx"],"commands":["go test"],"notes":""}
+`,
+	})
+	report, err := Run(dir)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(report.Fails) != 0 || len(report.Warns) != 0 {
+		t.Fatalf("expected clean canonical v1 verify, got fails=%+v warns=%+v", report.Fails, report.Warns)
+	}
+}
+
+func TestVerify_SchemaCanonicalRejectsWeakDone(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONCanonical(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":[],"evidence":[],"event":{"actor":"codex","role":"implementer","summary":"done","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasFailCode(report, "AUDIT_PASS_INVALID") {
+		t.Fatalf("expected AUDIT_PASS_INVALID, got %+v", report.Fails)
+	}
+}
+
+func TestVerify_SchemaCanonicalWarnsOnBadTransition(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONCanonical(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"ready","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":[],"evidence":[],"event":{"actor":"codex","role":"planner","summary":"ready","notes":""}}
+{"n":2,"ts":"2026-05-14T10:01:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":[],"evidence":["go test"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":1,"summary":"passed","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarnCode(report, "INVALID_TRANSITION") {
+		t.Fatalf("expected INVALID_TRANSITION warn, got %+v", report.Warns)
+	}
+}
+
+func TestVerify_SchemaCanonicalWarnsOnPrematureWorklog(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONCanonical(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":[],"evidence":["go test"],"event":{"actor":"codex","role":"implementer","summary":"review","notes":""}}
+`,
+		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:01:00Z","ticket":"T-1","actor":"codex","title":"build ui shipped","summary":"implemented","paths":["ui.tsx"],"commands":["go test"],"notes":""}
+`,
+	})
+	report, _ := Run(dir)
+	if !hasWarnCode(report, "PREMATURE_WORKLOG") {
+		t.Fatalf("expected PREMATURE_WORKLOG warn, got %+v", report.Warns)
 	}
 }
 
@@ -252,6 +332,12 @@ func validConfigJSON() string {
 	return mustJSON(c)
 }
 
+func validConfigJSONCanonical() string {
+	c := config.Default("myapp", "9f8a7c6b5d4e3f2a1b0c9d8e7f6a5b4c", "")
+	c.SchemaVersion = 1
+	return mustJSON(c)
+}
+
 func validGoalJSON() string {
 	return `{"schema_version":1,"track":"project","version":"0.1.0","updated":"2026-05-14T00:00:00Z","source_of_truth":"README.md","summary":"x","success_criteria":[]}`
 }
@@ -265,9 +351,27 @@ func hasWarn(r Report, code string) bool {
 	return false
 }
 
+func hasWarnCode(r Report, code string) bool {
+	for _, w := range r.Warns {
+		if w.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func hasFail(r Report, code string) bool {
 	for _, f := range r.Fails {
 		if strings.Contains(f.Message, code) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFailCode(r Report, code string) bool {
+	for _, f := range r.Fails {
+		if f.Code == code {
 			return true
 		}
 	}
@@ -324,6 +428,23 @@ func TestVerify_WarnsOnAuditMissingReviewedN(t *testing.T) {
 	}
 }
 
+func TestVerify_WarnsOnAuditReviewedNMismatch(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"AR-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"open","task":"audit","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":2,"ts":"2026-05-14T10:01:00Z","ticket":"AR-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"in_progress","task":"audit","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":3,"ts":"2026-05-14T10:02:00Z","ticket":"AR-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"audit_ready","task":"audit","scope":"repo","paths":[],"blocked_by":[],"branch":"","evidence":["go test"]}
+{"n":4,"ts":"2026-05-14T10:03:00Z","ticket":"AR-2","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":2,"task":"audit","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "AUDIT_REVIEWED_N_MISMATCH") {
+		t.Fatalf("expected AUDIT_REVIEWED_N_MISMATCH warn: %+v", report)
+	}
+}
+
 func TestVerify_WarnsOnPrematureWorklog(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"ledger/config.json": validConfigJSON(),
@@ -336,6 +457,39 @@ func TestVerify_WarnsOnPrematureWorklog(t *testing.T) {
 	report, _ := Run(dir)
 	if !hasWarn(report, "PREMATURE_WORKLOG") {
 		t.Fatalf("expected PREMATURE_WORKLOG warn: %+v", report)
+	}
+}
+
+func TestVerify_PrematureWorklogUsesWorklogTimestamp(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"PW-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"open","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":2,"ts":"2026-05-14T10:01:00Z","ticket":"PW-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"in_progress","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+{"n":3,"ts":"2026-05-14T10:03:00Z","ticket":"PW-2","parent_ticket":"BUG","agent":"codex","role":"impl","category":"bug","status":"audit_ready","task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":"","evidence":["go test"]}
+{"n":4,"ts":"2026-05-14T10:04:00Z","ticket":"PW-2","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":3,"task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:02:00Z","ticket":"PW-2","agent":"codex","task":"early","scope":"repo","result":"too soon","paths":[],"commands":[],"notes":"","branch":"","commit":""}
+`,
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "PREMATURE_WORKLOG") {
+		t.Fatalf("expected PREMATURE_WORKLOG based on worklog timestamp: %+v", report)
+	}
+}
+
+func TestVerify_PrematureWorklogUsesParsedFractionalTimestamps(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00.500Z","ticket":"PW-3","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":1,"task":"x","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"PW-3","agent":"codex","task":"early","scope":"repo","result":"too soon","paths":[],"commands":[],"notes":"","branch":"","commit":""}
+`,
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "PREMATURE_WORKLOG") {
+		t.Fatalf("expected PREMATURE_WORKLOG with fractional ticket ts: %+v", report)
 	}
 }
 

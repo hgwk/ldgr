@@ -51,6 +51,26 @@ func runAuditPass(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := resolveTarget(*target)
+	if isCanonicalTarget(dir) {
+		reviewedN, err := findCanonicalReviewedN(dir, *ticket)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		input := map[string]any{
+			"id":       *ticket,
+			"state":    "done",
+			"evidence": stringsToAny(evidence),
+			"event": map[string]any{
+				"role":       "auditor",
+				"result":     "pass",
+				"reviewed_n": float64(reviewedN),
+				"summary":    "passed",
+				"notes":      "",
+			},
+		}
+		return appendTicketEvent(dir, input, stdout, stderr)
+	}
 	reviewedN, err := findReviewedN(dir, *ticket)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -84,6 +104,25 @@ func runAuditRequestChanges(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := resolveTarget(*target)
+	if isCanonicalTarget(dir) {
+		reviewedN, err := findCanonicalReviewedN(dir, *ticket)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		input := map[string]any{
+			"id":    *ticket,
+			"state": "rework",
+			"event": map[string]any{
+				"role":       "auditor",
+				"result":     "changes_requested",
+				"reviewed_n": float64(reviewedN),
+				"summary":    "changes requested",
+				"notes":      *notes,
+			},
+		}
+		return appendTicketEvent(dir, input, stdout, stderr)
+	}
 	reviewedN, err := findReviewedN(dir, *ticket)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -98,6 +137,32 @@ func runAuditRequestChanges(args []string, stdout, stderr io.Writer) int {
 		"reviewed_n":   float64(reviewedN),
 	}
 	return appendTicketEvent(dir, input, stdout, stderr)
+}
+
+// findCanonicalReviewedN walks ticket rows to find the most recent review row for the
+// canonical v1 ticket. The name is historical and should be collapsed in a
+// later mechanical rename.
+func findCanonicalReviewedN(dir, ticket string) (int, error) {
+	rows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
+	if err != nil {
+		return 0, err
+	}
+	var best float64 = -1
+	for _, r := range rows {
+		if id, _ := r["id"].(string); id != ticket {
+			continue
+		}
+		if s, _ := r["state"].(string); s != "review" {
+			continue
+		}
+		if n, _ := r["n"].(float64); n > best {
+			best = n
+		}
+	}
+	if best < 0 {
+		return 0, fmt.Errorf("audit pass requires a prior review row; run `ldgr ticket event --json @-` with state=review first.")
+	}
+	return int(best), nil
 }
 
 // findReviewedN walks ticket rows to find the most recent audit_ready row for the ticket.

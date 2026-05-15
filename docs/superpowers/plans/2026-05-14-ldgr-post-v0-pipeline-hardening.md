@@ -26,13 +26,16 @@
 7. New `ldgr worklog add` writes require a non-empty `ticket`; legacy/imported missing-ticket rows remain verify warnings, not immediate migration blockers.
 8. Instructions accurately distinguish enforced rules from guidance-only behavior.
 9. Install docs explain how to make `ldgr` available on `PATH` after `go install`, and release docs describe binary install.
-10. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
+10. Implementation-ticket guidance requires a stable provenance note shape:
+    `archived=<path or none>; borrow=<path or none>; reference=<path or none>; new=<delta + why>`.
+11. Guidance documents explain `not_borrowed=<why>` for references that were reviewed but intentionally skipped.
+12. `go test ./...`, `go test -race ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ---
 
 ## Task Granularity
 
-7 tasks. Each task is one TDD cycle and should end with a commit.
+8 tasks. Each task is one TDD cycle and should end with a commit.
 
 ### Task 1: migration happy path
 
@@ -66,6 +69,7 @@
 ### Task 4: historical ledger noise controls
 
 - [ ] Add `--new-only` or equivalent mode for checking rows appended after a known baseline.
+- [ ] Use split baselines for independent JSONL streams, e.g. `--since-ticket-n` and `--since-worklog-n`; a single `--since-n` may remain only as shorthand for small projects.
 - [ ] Keep default verify backward compatible.
 - [ ] Document recommended CI mode for new projects vs imported projects.
 - [ ] Commit `feat(verify): support scoped historical checks`.
@@ -96,6 +100,17 @@
 - [ ] Optional: add `ldgr doctor` plan note if not implemented here.
 - [ ] Commit `docs(install): clarify PATH setup`.
 
+### Task 8: implementation provenance guidance
+
+- [ ] Update spec guidance so implementation tickets use this minimum `notes` shape:
+  ```
+  archived=<path or none>; borrow=<path or none>; reference=<path or none>; new=<delta + why>
+  ```
+- [ ] Update `cmd/instructions/AGENTS.ldgr.md` and `cmd/instructions/CLAUDE.ldgr.md` with the same shape.
+- [ ] Explain `not_borrowed=<why>` for references that are stack-specific, domain-specific, or otherwise intentionally skipped.
+- [ ] Add/adjust instruction-body tests if snapshots exist; otherwise cover through install smoke.
+- [ ] Commit `docs(instructions): require implementation provenance notes`.
+
 ---
 
 ## Self-Review Checklist
@@ -105,6 +120,7 @@
 - [ ] Verify output remains actionable on large historical ledgers.
 - [ ] New writes are stricter than legacy rows, without breaking imported history.
 - [ ] Installed instructions do not overpromise enforcement.
+- [ ] New implementation tickets carry archived/borrow/reference/new provenance before code work begins.
 - [ ] Shell scripts in target repos do not fail just because `ldgr` is outside `PATH`.
 - [ ] No external dependencies.
 

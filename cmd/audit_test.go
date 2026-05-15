@@ -73,3 +73,57 @@ func TestAuditRequestChanges_AppendsCorrectRow(t *testing.T) {
 		t.Fatalf("reviewed_n should be %d, got %v", n, last["reviewed_n"])
 	}
 }
+
+func driveCanonicalToReview(t *testing.T, target, ticket string) int {
+	t.Helper()
+	add := fmt.Sprintf(`{"id":%q,"parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"x","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`, ticket)
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(fmt.Sprintf(`{"id":%q,"state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`, ticket)), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(fmt.Sprintf(`{"id":%q,"state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`, ticket)), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	return int(rows[len(rows)-1]["n"].(float64))
+}
+
+func TestAuditPassCanonical_AutoSetsReviewedN(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	n := driveCanonicalToReview(t, target, "AUP-CANON")
+	var stderr bytes.Buffer
+	if code := RunAuditCLI([]string{"pass", "--target", target, "--ticket", "AUP-CANON", "--evidence", "go test"}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("canonical v1 audit pass failed: %s", stderr.String())
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	last := rows[len(rows)-1]
+	if last["state"] != "done" {
+		t.Fatalf("canonical v1 audit pass state wrong: %+v", last)
+	}
+	event, _ := last["event"].(map[string]any)
+	if event["role"] != "auditor" || event["result"] != "pass" {
+		t.Fatalf("canonical v1 audit event malformed: %+v", event)
+	}
+	if rn, _ := event["reviewed_n"].(float64); int(rn) != n {
+		t.Fatalf("reviewed_n should be %d, got %v", n, event["reviewed_n"])
+	}
+}
+
+func TestAuditRequestChangesCanonical_AppendsRework(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	n := driveCanonicalToReview(t, target, "ACR-CANON")
+	var stderr bytes.Buffer
+	if code := RunAuditCLI([]string{"request-changes", "--target", target, "--ticket", "ACR-CANON", "--notes", "missing regression tests"}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("canonical v1 request-changes failed: %s", stderr.String())
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	last := rows[len(rows)-1]
+	if last["state"] != "rework" {
+		t.Fatalf("expected rework, got %+v", last)
+	}
+	event, _ := last["event"].(map[string]any)
+	if event["result"] != "changes_requested" || event["notes"] != "missing regression tests" {
+		t.Fatalf("canonical v1 request changes event malformed: %+v", event)
+	}
+	if rn, _ := event["reviewed_n"].(float64); int(rn) != n {
+		t.Fatalf("reviewed_n should be %d, got %v", n, event["reviewed_n"])
+	}
+}

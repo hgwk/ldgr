@@ -23,6 +23,13 @@ ldgr goal set     --json @-
 
 After every write, stderr contains the next concrete action. Read it.
 
+## Writing language
+
+Free-text ledger fields (`task`, `notes`, `result`, `decision`, `audit_notes`,
+`handoff`, `summary`, `acceptance`) follow `ledger/config.json` →
+`writing_language` when set. Do not translate schema field names, enum values,
+code identifiers, file paths, commands, or quoted API names.
+
 ## Lifecycle the binary will enforce
 
 1. Implementation: `open → in_progress → audit_ready` (this is you).
@@ -52,3 +59,21 @@ ldgr audit request-changes --ticket <id> --notes "..."
 ```
 
 These read the ledger, validate the transition, and write the right row.
+
+If `ledger/config.json` has `schema_version: 1`, use v1 vocabulary:
+`id/state/type/area/title/event`. The enforced flow is
+`ready → doing → review → done|rework`, with `backlog`, `blocked`, and
+`dropped` as explicit side states. In v1, the latest row is keyed by `id`, not
+by v1 `ticket`; the same shortcut commands write the matching v1 rows.
+
+## Implementation provenance
+
+Implementation tickets should not start from a blank page. Put this minimum
+provenance block in ticket `notes`:
+
+```text
+archived=<path or none>; borrow=<path or none>; reference=<path or none>; new=<delta + why>
+```
+
+Use `not_borrowed=<why>` when a reference exists but is intentionally skipped
+because it is stack-specific, domain-specific, or otherwise mismatched.

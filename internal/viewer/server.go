@@ -286,7 +286,11 @@ func (s *Server) handleProjectSubroute(w http.ResponseWriter, r *http.Request) {
 	case "dashboard":
 		writeJSON(w, BuildDashboard(proj.Tickets, proj.Worklog, s.Now()))
 	case "kanban":
-		writeJSON(w, BuildKanban(proj.Tickets))
+		if usesCanonicalTicketRows(proj.Tickets) {
+			writeJSON(w, buildCanonicalKanban(proj.Tickets))
+		} else {
+			writeJSON(w, BuildKanban(proj.Tickets))
+		}
 	case "audit-queue":
 		latest := LatestTickets(proj.Tickets)
 		writeJSON(w, map[string]any{"items": BuildAuditQueue(latest, s.Now())})
@@ -408,9 +412,16 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request, proj Proje
 func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, proj Project, ticketID string) {
 	// Collect all non-companion rows for this ticket, oldest first.
 	history := make([]ledger.Row, 0)
+	canonical := usesCanonicalTicketRows(proj.Tickets)
 	for _, row := range proj.Tickets {
-		if id, _ := row["ticket"].(string); id != ticketID {
-			continue
+		if canonical {
+			if id, _ := row["id"].(string); id != ticketID {
+				continue
+			}
+		} else {
+			if id, _ := row["ticket"].(string); id != ticketID {
+				continue
+			}
 		}
 		if _, isCompanion := row["invalidates_n"]; isCompanion {
 			continue
@@ -497,6 +508,21 @@ func recentWorklogTS(rows []ledger.Row) string {
 		}
 	}
 	return best
+}
+
+func usesCanonicalTicketRows(rows []ledger.Row) bool {
+	for _, row := range rows {
+		if _, ok := row["id"]; ok {
+			return true
+		}
+		if _, ok := row["state"]; ok {
+			return true
+		}
+		if _, ok := row["event"]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

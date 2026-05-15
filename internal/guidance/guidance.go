@@ -23,6 +23,18 @@ var allowedNextTransitions = map[string][]string{
 	"cancelled":         nil,
 }
 
+var allowedNextTransitionsCanonical = map[string][]string{
+	"":        {"backlog", "ready"},
+	"backlog": {"ready", "dropped"},
+	"ready":   {"doing", "blocked", "dropped"},
+	"doing":   {"review", "blocked", "dropped"},
+	"blocked": {"ready", "doing", "dropped"},
+	"review":  {"done", "rework", "dropped"},
+	"rework":  {"doing", "ready", "dropped"},
+	"done":    nil,
+	"dropped": nil,
+}
+
 // Warning represents a severity-coded warning for a ticket.
 type Warning struct {
 	Code     string `json:"code"`
@@ -32,8 +44,11 @@ type Warning struct {
 
 // Guidance is the wire shape for both stderr text rendering and the `next` JSON output.
 type Guidance struct {
-	Ticket            string    `json:"ticket"`
-	Status            string    `json:"status"`
+	Ticket            string    `json:"ticket,omitempty"`
+	Status            string    `json:"status,omitempty"`
+	ID                string    `json:"id,omitempty"`
+	State             string    `json:"state,omitempty"`
+	WritingLanguage   string    `json:"writing_language,omitempty"`
 	Summary           string    `json:"summary"`
 	Actions           []string  `json:"actions"`
 	Warnings          []Warning `json:"warnings"`
@@ -155,10 +170,94 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 	return g
 }
 
+// ComputeCanonical derives guidance for a canonical v1 latest ticket row. The name is
+// historical and should be collapsed in a later mechanical rename.
+func ComputeCanonical(latest ledger.Row, worklog []ledger.Row) Guidance {
+	g := Guidance{
+		ID:    stringField(latest, "id"),
+		State: stringField(latest, "state"),
+	}
+	switch g.State {
+	case "backlog":
+		g.Summary = "not ready; planning or triage needed"
+		g.Actions = []string{
+			"Clarify acceptance and blockers before implementation.",
+			"Move to ready when the next owner can start without more product decisions.",
+		}
+		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
+		g.SuggestedJSON = []any{overlayCanonical(latest, map[string]any{"state": "ready", "event": map[string]any{"role": "planner", "summary": "ready", "notes": ""}})}
+	case "ready":
+		g.Summary = "ready to claim"
+		g.Actions = []string{
+			"Claim the ticket by moving state=doing and setting the touched paths in notes or evidence when useful.",
+			"Confirm archive/reference/new judgment is recorded in event.notes before implementation.",
+		}
+		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
+		g.SuggestedJSON = []any{overlayCanonical(latest, map[string]any{"state": "doing", "event": map[string]any{"role": "implementer", "summary": "started", "notes": ""}})}
+	case "doing":
+		g.Summary = "implementation active"
+		g.Actions = []string{
+			"Finish implementation and verification evidence.",
+			"Move to review only when evidence is ready; do not append worklog yet.",
+		}
+		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
+		g.SuggestedJSON = []any{overlayCanonical(latest, map[string]any{"state": "review", "evidence": []any{}, "event": map[string]any{"role": "implementer", "summary": "ready for review", "notes": ""}})}
+	case "blocked":
+		g.Summary = "blocked"
+		g.Actions = []string{"Resolve blocked_by before implementation continues."}
+		blockers := stringSliceField(latest, "blocked_by")
+		if len(blockers) == 0 {
+			g.Warnings = append(g.Warnings, Warning{Code: "BLOCKED_NO_BLOCKERS", Severity: "warning", Message: "state=blocked but blocked_by is empty"})
+		}
+	case "review":
+		g.Summary = "awaiting audit"
+		g.Actions = []string{
+			"Auditor decides pass or changes_requested.",
+			"Pass moves state=done with event.result=pass and reviewed_n.",
+			"Requested changes move state=rework with event.result=changes_requested and reviewed_n.",
+		}
+		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
+		g.SuggestedJSON = []any{
+			overlayCanonical(latest, map[string]any{"state": "done", "event": map[string]any{"role": "auditor", "result": "pass", "reviewed_n": 0, "summary": "passed", "notes": ""}}),
+			overlayCanonical(latest, map[string]any{"state": "rework", "event": map[string]any{"role": "auditor", "result": "changes_requested", "reviewed_n": 0, "summary": "changes requested", "notes": ""}}),
+		}
+	case "rework":
+		g.Summary = "audit requested changes"
+		g.Actions = []string{"Resume implementation with state=doing or send back to ready if planning is needed."}
+		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
+		g.SuggestedJSON = []any{overlayCanonical(latest, map[string]any{"state": "doing", "event": map[string]any{"role": "implementer", "summary": "resumed", "notes": ""}})}
+	case "done":
+		if isCanonicalAuditPass(latest) {
+			g.Summary = "audit passed; record worklog"
+			g.Actions = []string{"Append a canonical v1 worklog row for the completed delivery."}
+			g.SuggestedCommands = []string{fmt.Sprintf("ldgr suggest worklog --ticket %s", g.ID)}
+		} else {
+			g.Summary = "done without a valid audit pass"
+			g.Warnings = []Warning{{Code: "WEAK_DONE", Severity: "critical", Message: "state=done lacks event.result=pass, reviewed_n, or evidence"}}
+		}
+	case "dropped":
+		g.Summary = "dropped"
+		g.Actions = []string{"Keep the reason in event.notes. Do not append a worklog unless the drop itself is the delivery."}
+	default:
+		g.Summary = "unknown state"
+		g.Warnings = []Warning{{Code: "INVALID_STATE", Severity: "warning", Message: fmt.Sprintf("unrecognized state: %q", g.State)}}
+	}
+	g.NextTransitions = allowedNextTransitionsCanonical[g.State]
+	_ = worklog
+	return g
+}
+
 // RenderText formats Guidance for stderr / human consumption.
 func RenderText(g Guidance) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Ticket %s is %s — %s\n", g.Ticket, g.Status, g.Summary)
+	id, state := g.Ticket, g.Status
+	if id == "" {
+		id = g.ID
+	}
+	if state == "" {
+		state = g.State
+	}
+	fmt.Fprintf(&b, "Ticket %s is %s — %s\n", id, state, g.Summary)
 	if len(g.Actions) > 0 {
 		b.WriteString("\nNext:\n")
 		for _, a := range g.Actions {
@@ -179,6 +278,9 @@ func RenderText(g Guidance) string {
 	}
 	if len(g.NextTransitions) > 0 {
 		b.WriteString("\nNext transitions: " + strings.Join(g.NextTransitions, ", ") + "\n")
+	}
+	if g.WritingLanguage != "" {
+		fmt.Fprintf(&b, "\nWriting language: %s\n", g.WritingLanguage)
 	}
 	return b.String()
 }
@@ -202,9 +304,42 @@ func overlay(base ledger.Row, fields map[string]any) map[string]any {
 	return out
 }
 
+func overlayCanonical(base ledger.Row, fields map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, k := range []string{"id", "parent", "type", "state", "area", "priority", "title", "owner", "blocked_by", "acceptance", "evidence"} {
+		if v, ok := base[k]; ok {
+			out[k] = v
+		}
+	}
+	for k, v := range fields {
+		out[k] = v
+	}
+	return out
+}
+
 func isAuditPass(latest ledger.Row) bool {
 	v, _ := latest["audit_result"].(string)
 	return v == "pass"
+}
+
+func isCanonicalAuditPass(latest ledger.Row) bool {
+	if state, _ := latest["state"].(string); state != "done" {
+		return false
+	}
+	event, _ := latest["event"].(map[string]any)
+	if event == nil {
+		return false
+	}
+	if role, _ := event["role"].(string); role != "auditor" {
+		return false
+	}
+	if result, _ := event["result"].(string); result != "pass" {
+		return false
+	}
+	if _, ok := event["reviewed_n"].(float64); !ok {
+		return false
+	}
+	return len(stringSliceField(latest, "evidence")) > 0
 }
 
 func stringField(r ledger.Row, k string) string {

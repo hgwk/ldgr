@@ -69,6 +69,20 @@ func TestNormalizeTickets_MissingTSGetsNowAndWarn(t *testing.T) {
 	}
 }
 
+func TestNormalizeTickets_ReplacesDecreasingFractionalTS(t *testing.T) {
+	in := []ledger.Row{
+		{"ticket": "a", "task": "t", "ts": "2026-05-14T10:00:00.500Z", "agent": "codex", "role": "impl", "status": "open", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "parent_ticket": "ROOT"},
+		{"ticket": "b", "task": "t", "ts": "2026-05-14T10:00:00Z", "agent": "codex", "role": "impl", "status": "open", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "parent_ticket": "ROOT"},
+	}
+	rows, n, _ := NormalizeTickets(in, []string{"ROOT"}, fixedNow())
+	if n.TSReplaced != 1 {
+		t.Fatalf("expected one replaced ts, got %+v", n)
+	}
+	if rows[1]["ts"] != fixedNow() {
+		t.Fatalf("expected second ts replaced, got %v", rows[1]["ts"])
+	}
+}
+
 func TestNormalizeTickets_DefaultsAgentToLegacy(t *testing.T) {
 	in := []ledger.Row{
 		{"ticket": "a", "task": "t", "ts": "2026-05-14T10:00:00Z", "role": "impl", "status": "open", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "parent_ticket": "ROOT"},

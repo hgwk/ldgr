@@ -66,6 +66,53 @@ func TestSuggestWorklog_EmitsSkeletonAfterAuditPass(t *testing.T) {
 	}
 }
 
+func TestSuggestWorklogCanonical_EmitsCanonicalSkeletonAfterAuditPass(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"SW-CANON","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build canonical v1","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"SW-CANON","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"SW-CANON","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	reviewN := int(rows[len(rows)-1]["n"].(float64))
+	pass := fmt.Sprintf(`{"id":"SW-CANON","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"worklog", "--target", target, "--ticket", "SW-CANON"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 worklog failed")
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("expected JSON skeleton, got %s: %v", out.String(), err)
+	}
+	if skel["ticket"] != "SW-CANON" || skel["title"] != "build canonical v1" || skel["summary"] == "" {
+		t.Fatalf("wrong canonical v1 skeleton: %+v", skel)
+	}
+	if _, ok := skel["task"]; ok {
+		t.Fatalf("canonical v1 skeleton should not include v1 task: %+v", skel)
+	}
+	if _, ok := skel["result"]; ok {
+		t.Fatalf("canonical v1 skeleton should not include v1 result: %+v", skel)
+	}
+}
+
+func TestSuggestWorklogCanonical_BeforeAuditPassPrintsCanonicalGuidance(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"SW-CANON-WAIT","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build canonical v1","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"SW-CANON-WAIT","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"SW-CANON-WAIT","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"worklog", "--target", target, "--ticket", "SW-CANON-WAIT"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 worklog guidance failed")
+	}
+	if strings.Contains(out.String(), `"task"`) || !strings.Contains(out.String(), "awaiting audit") {
+		t.Fatalf("expected canonical v1 guidance before audit pass, got: %s", out.String())
+	}
+}
+
 func TestSuggestCommit_ConventionalLineFromCategory(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
@@ -189,6 +236,47 @@ func TestSuggestAudit_OnNonAuditReadyPrintsGuidance(t *testing.T) {
 	}
 }
 
+func TestSuggestAuditCanonical_OnReviewEmitsSkeletons(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	reviewN := driveCanonicalToReview(t, target, "AU-CANON")
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"audit", "--target", target, "--ticket", "AU-CANON"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 audit failed")
+	}
+	var arr []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &arr); err != nil {
+		t.Fatalf("expected JSON array: %v\n%s", err, out.String())
+	}
+	if len(arr) != 2 {
+		t.Fatalf("expected 2 skeletons, got %d", len(arr))
+	}
+	if arr[0]["id"] != "AU-CANON" || arr[0]["state"] != "done" || arr[1]["state"] != "rework" {
+		t.Fatalf("unexpected canonical v1 audit skeletons: %+v", arr)
+	}
+	event, _ := arr[0]["event"].(map[string]any)
+	if rn, _ := event["reviewed_n"].(float64); int(rn) != reviewN {
+		t.Fatalf("reviewed_n should be %d, got %+v", reviewN, event)
+	}
+	if _, ok := arr[0]["ticket"]; ok {
+		t.Fatalf("canonical v1 audit skeleton should not include v1 ticket: %+v", arr[0])
+	}
+}
+
+func TestSuggestAuditCanonical_OnNonReviewPrintsGuidance(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"AU-CANON-WAIT","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"x","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"audit", "--target", target, "--ticket", "AU-CANON-WAIT"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 audit guidance failed")
+	}
+	if strings.HasPrefix(strings.TrimSpace(out.String()), "[") || !strings.Contains(out.String(), "review") {
+		t.Fatalf("expected canonical v1 review guidance, got: %s", out.String())
+	}
+}
+
 func TestSuggestCorrection_EmitsOpsCancellation(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
@@ -221,6 +309,114 @@ func TestSuggestPlan_NewTicketSkeleton(t *testing.T) {
 	json.Unmarshal(out.Bytes(), &skel)
 	if skel["ticket"] != "PLAN-1" || skel["status"] != "open" || skel["kind"] != "plan" {
 		t.Fatalf("plan skeleton wrong: %+v", skel)
+	}
+}
+
+func TestSuggestPlan_UsesWritingLanguage(t *testing.T) {
+	target, store := mustInit(t)
+	if err := RunInit(target, InitOpts{Slug: "myapp", WritingLanguage: "ko"}, store); err != nil {
+		t.Fatalf("set language: %v", err)
+	}
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"plan", "--target", target, "--ticket", "PLAN-KO"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest plan failed: %s", out.String())
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if skel["writing_language"] != "ko" {
+		t.Fatalf("missing writing_language: %+v", skel)
+	}
+	if skel["task"] != "<한 줄 작업 설명>" {
+		t.Fatalf("expected Korean task placeholder, got %+v", skel["task"])
+	}
+}
+
+func TestSuggestPlanCanonical_NewTicketSkeleton(t *testing.T) {
+	target := mustInitCanonical(t)
+	seedCanonicalTicket(t, target, "SEED-CANON")
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"plan", "--target", target, "--ticket", "PLAN-CANON"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 plan failed: %s", out.String())
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if skel["id"] != "PLAN-CANON" || skel["state"] != "backlog" || skel["type"] != "plan" {
+		t.Fatalf("canonical v1 plan skeleton wrong: %+v", skel)
+	}
+	if _, ok := skel["ticket"]; ok {
+		t.Fatalf("canonical v1 plan skeleton should not include v1 ticket: %+v", skel)
+	}
+}
+
+func TestSuggestCorrectionCanonical_EmitsDroppedEvent(t *testing.T) {
+	target := mustInitCanonical(t)
+	seedCanonicalTicket(t, target, "SEED-CANON")
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"correction", "--target", target, "--ticket", "CORR-CANON", "--invalidates-n", "3", "--notes", "bad row"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 correction failed: %s", out.String())
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if skel["id"] != "CORR-CANON" || skel["state"] != "dropped" {
+		t.Fatalf("canonical v1 correction skeleton wrong: %+v", skel)
+	}
+	event, _ := skel["event"].(map[string]any)
+	if event["role"] != "operator" || event["result"] != "corrected" {
+		t.Fatalf("canonical v1 correction event wrong: %+v", event)
+	}
+}
+
+func seedCanonicalTicket(t *testing.T, target, ticket string) {
+	t.Helper()
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := fmt.Sprintf(`{"id":%q,"parent":"ROOT","type":"task","state":"ready","area":"ops","priority":"P2","title":"seed","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"seed","notes":""}}`, ticket)
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("seed canonical ticket failed")
+	}
+}
+
+func TestSuggestCommitAndPRCanonical_AfterAuditPass(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	driveCanonicalToReview(t, target, "CPR-CANON")
+	if code := RunAuditCLI([]string{"pass", "--target", target, "--ticket", "CPR-CANON", "--evidence", "go test"}, &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("canonical v1 audit pass failed")
+	}
+
+	var commit bytes.Buffer
+	if code := RunSuggestCLI([]string{"commit", "--target", target, "--ticket", "CPR-CANON"}, &commit, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 commit failed")
+	}
+	if !strings.Contains(commit.String(), "feat: x") || !strings.Contains(commit.String(), "## Verification") {
+		t.Fatalf("unexpected canonical v1 commit scaffold: %s", commit.String())
+	}
+
+	var pr bytes.Buffer
+	if code := RunSuggestCLI([]string{"pr", "--target", target, "--ticket", "CPR-CANON"}, &pr, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 pr failed")
+	}
+	if !strings.Contains(pr.String(), "# PR: CPR-CANON x") || !strings.Contains(pr.String(), "event.result=pass") {
+		t.Fatalf("unexpected canonical v1 pr scaffold: %s", pr.String())
+	}
+}
+
+func TestSuggestCommitCanonical_RefusesBeforeAuditPass(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"SC-CANON-WAIT","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"x","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"commit", "--target", target, "--ticket", "SC-CANON-WAIT"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest canonical v1 commit guidance failed")
+	}
+	if strings.Contains(out.String(), "## Verification") || !strings.Contains(out.String(), "--allow-unaudited") {
+		t.Fatalf("expected canonical v1 guidance refusal, got: %s", out.String())
 	}
 }
 

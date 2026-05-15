@@ -21,8 +21,9 @@ func init() {
 }
 
 type InitOpts struct {
-	Slug string
-	Name string
+	Slug            string
+	Name            string
+	WritingLanguage string
 }
 
 // RunInit creates ledger/* in targetDir and registers it. Re-running on an
@@ -43,8 +44,15 @@ func RunInit(targetDir string, opts InitOpts, store *registry.Store) error {
 	var cfg config.Config
 	if existing, err := config.Load(configPath); err == nil && existing.ProjectID != "" {
 		cfg = existing
+		if opts.WritingLanguage != "" && cfg.WritingLanguage != opts.WritingLanguage {
+			cfg.WritingLanguage = opts.WritingLanguage
+			if err := config.PatchWritingLanguage(configPath, opts.WritingLanguage); err != nil {
+				return err
+			}
+		}
 	} else if errors.Is(err, os.ErrNotExist) || existing.ProjectID == "" {
 		cfg = config.Default(slug, ids.NewProjectID(), opts.Name)
+		cfg.WritingLanguage = opts.WritingLanguage
 		if err := config.Save(configPath, cfg); err != nil {
 			return err
 		}
@@ -78,6 +86,7 @@ func runInitCLI(args []string, stdout, stderr io.Writer) int {
 	target := fs.String("target", "", "target directory (defaults to cwd)")
 	slug := fs.String("slug", "", "project slug (defaults to dir name)")
 	name := fs.String("name", "", "project display name (defaults to slug)")
+	language := fs.String("language", "", "free-text writing language for ledger content (for example ko, en)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -100,7 +109,7 @@ func runInitCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if err := RunInit(abs, InitOpts{Slug: *slug, Name: *name}, store); err != nil {
+	if err := RunInit(abs, InitOpts{Slug: *slug, Name: *name, WritingLanguage: *language}, store); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

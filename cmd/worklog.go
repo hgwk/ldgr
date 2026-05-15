@@ -6,9 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/hgwk/ldgr/internal/agent"
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
+	"github.com/hgwk/ldgr/internal/lifecycle"
 )
 
 func init() {
@@ -34,6 +37,21 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
+	}
+	if isCanonicalTarget(dir) {
+		row, err := normalizeCanonicalWorklog(dir, input, stderr)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return encErr(enc.Encode(out), stderr)
 	}
 	row, err := autoFields(dir, input, stderr)
 	if err != nil {
@@ -85,6 +103,7 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		fmt.Fprintf(stderr, "  Run `ldgr next --ticket %s` for the required audit step.\n", ticketID)
 		return 1
 	}
+	ensureRowTSAfter(row, latest)
 
 	out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
 	if err != nil {
@@ -95,6 +114,55 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	return encErr(enc.Encode(out), stderr)
+}
+
+func normalizeCanonicalWorklog(dir string, input map[string]any, stderr io.Writer) (map[string]any, error) {
+	row, err := autoFieldsCanonicalWorklog(input, stderr)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireFields(row, withoutN(ledger.CanonicalWorklogRequired), "worklog"); err != nil {
+		return nil, err
+	}
+	if err := requireNonEmpty(row, ledger.CanonicalWorklogNonEmpty, "worklog"); err != nil {
+		return nil, err
+	}
+	ticketID, _ := row["ticket"].(string)
+	ticketRows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	latest, ok := findLatestCanonicalTicket(ticketRows, ticketID)
+	if !ok {
+		return nil, fmt.Errorf("worklog: ticket %q does not exist", ticketID)
+	}
+	if !isCanonicalWorklogAllowed(latest) {
+		return nil, fmt.Errorf("worklog: ticket %q is not audit-pass done; cannot record a delivery yet", ticketID)
+	}
+	ensureRowTSAfter(row, latest)
+	return row, nil
+}
+
+func autoFieldsCanonicalWorklog(in map[string]any, stderr io.Writer) (map[string]any, error) {
+	if _, ok := in["ts"]; !ok || in["ts"] == "" {
+		in["ts"] = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	}
+	envMap := envAsMap()
+	actor, _ := in["actor"].(string)
+	resolved, warn, err := agent.Resolve(actor, envMap)
+	if err != nil {
+		return nil, err
+	}
+	if actor == "" {
+		in["actor"] = resolved
+	}
+	if _, ok := in["notes"]; !ok {
+		in["notes"] = ""
+	}
+	if warn != "" {
+		fmt.Fprintln(stderr, "warning:", warn)
+	}
+	return in, nil
 }
 
 // emitWorklogGuidance emits guidance for the ticket associated with the worklog entry,
@@ -114,20 +182,56 @@ func emitWorklogGuidance(dir string, row map[string]any, stderr io.Writer) {
 	}
 	worklog, _ := ledger.ReadRows(filepath.Join(dir, "ledger", "worklog.jsonl"))
 	g := guidance.Compute(latest, worklog)
+	g.WritingLanguage = loadWritingLanguage(dir)
 	fmt.Fprint(stderr, guidance.RenderText(g))
 }
 
-// isWorklogAllowed returns true iff the latest ticket row has a confirmed
-// audit-pass closure (status=done, role=audit, audit_result=pass).
+// isWorklogAllowed returns true iff the latest ticket row has a strong
+// audit-pass closure.
 func isWorklogAllowed(latest ledger.Row) bool {
-	if s, _ := latest["status"].(string); s != "done" {
+	return lifecycle.IsAuditPassDone(latest)
+}
+
+func isCanonicalWorklogAllowed(latest ledger.Row) bool {
+	if state, _ := latest["state"].(string); state != "done" {
 		return false
 	}
-	if r, _ := latest["role"].(string); r != "audit" {
+	event, _ := latest["event"].(map[string]any)
+	if event == nil {
 		return false
 	}
-	if ar, _ := latest["audit_result"].(string); ar != "pass" {
+	if role, _ := event["role"].(string); role != "auditor" {
 		return false
 	}
-	return true
+	if result, _ := event["result"].(string); result != "pass" {
+		return false
+	}
+	return hasPositiveCanonicalNumber(event["reviewed_n"]) && hasNonEmptyCanonicalList(latest, "evidence")
+}
+
+func findLatestCanonicalTicket(rows []ledger.Row, id string) (ledger.Row, bool) {
+	var latest ledger.Row
+	for _, r := range rows {
+		if r["id"] == id {
+			latest = r
+		}
+	}
+	return latest, latest != nil
+}
+
+func ensureRowTSAfter(row, prior ledger.Row) {
+	rowTS, _ := row["ts"].(string)
+	priorTS, _ := prior["ts"].(string)
+	if rowTS == "" || priorTS == "" {
+		return
+	}
+	priorTime, err := time.Parse(time.RFC3339Nano, priorTS)
+	if err != nil {
+		return
+	}
+	rowTime, err := time.Parse(time.RFC3339Nano, rowTS)
+	if err != nil || rowTime.After(priorTime) {
+		return
+	}
+	row["ts"] = priorTime.Add(time.Second).UTC().Format("2006-01-02T15:04:05Z")
 }

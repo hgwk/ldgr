@@ -171,13 +171,24 @@ func TestValidate_RejectsAuditPassWithoutReviewedN(t *testing.T) {
 }
 
 func TestValidate_AcceptsAuditPassWithReviewedN(t *testing.T) {
-	prev := row(map[string]any{"status": "audit_ready", "evidence": []any{"x"}})
+	prev := row(map[string]any{"n": float64(7), "status": "audit_ready", "evidence": []any{"x"}})
 	v := Validate(row(map[string]any{
 		"status": "done", "role": "audit", "audit_result": "pass",
 		"evidence": []any{"go test"}, "reviewed_n": float64(7),
 	}), prev)
 	if v != nil {
 		t.Fatalf("want accept, got %v", v)
+	}
+}
+
+func TestValidate_RejectsAuditPassReviewedNMismatch(t *testing.T) {
+	prev := row(map[string]any{"n": float64(7), "status": "audit_ready", "evidence": []any{"x"}})
+	v := Validate(row(map[string]any{
+		"status": "done", "role": "audit", "audit_result": "pass",
+		"evidence": []any{"go test"}, "reviewed_n": float64(6),
+	}), prev)
+	if v == nil || v.Code != "AUDIT_PASS_NEEDS_REVIEWED_N" {
+		t.Fatalf("want AUDIT_PASS_NEEDS_REVIEWED_N mismatch, got %v", v)
 	}
 }
 
@@ -202,7 +213,7 @@ func TestValidate_RejectsChangesRequestedMissingFields(t *testing.T) {
 }
 
 func TestValidate_AcceptsChangesRequestedWithAllFields(t *testing.T) {
-	prev := row(map[string]any{"status": "audit_ready", "evidence": []any{"x"}})
+	prev := row(map[string]any{"n": float64(7), "status": "audit_ready", "evidence": []any{"x"}})
 	v := Validate(row(map[string]any{
 		"status": "changes_requested", "role": "audit",
 		"audit_result": "changes_requested",
@@ -211,6 +222,19 @@ func TestValidate_AcceptsChangesRequestedWithAllFields(t *testing.T) {
 	}), prev)
 	if v != nil {
 		t.Fatalf("want accept, got %v", v)
+	}
+}
+
+func TestValidate_RejectsChangesRequestedReviewedNMismatch(t *testing.T) {
+	prev := row(map[string]any{"n": float64(7), "status": "audit_ready", "evidence": []any{"x"}})
+	v := Validate(row(map[string]any{
+		"status": "changes_requested", "role": "audit",
+		"audit_result": "changes_requested",
+		"audit_notes":  "missing regression coverage",
+		"reviewed_n":   float64(5),
+	}), prev)
+	if v == nil || v.Code != "CHANGES_REQUESTED_INVALID" {
+		t.Fatalf("want CHANGES_REQUESTED_INVALID mismatch, got %v", v)
 	}
 }
 

@@ -11,15 +11,18 @@ import (
 
 // ProjectGuidance is the JSON shape for `ldgr next` without --ticket.
 type ProjectGuidance struct {
-	Role       string             `json:"role"`
-	Highlights []ProjectQueueItem `json:"highlights"` // top 8
-	Counts     ProjectCounts      `json:"counts"`
+	Role            string             `json:"role"`
+	WritingLanguage string             `json:"writing_language,omitempty"`
+	Highlights      []ProjectQueueItem `json:"highlights"` // top 8
+	Counts          ProjectCounts      `json:"counts"`
 }
 
 // ProjectQueueItem represents a single ticket in the project-wide queue.
 type ProjectQueueItem struct {
-	Ticket    string `json:"ticket"`
-	Status    string `json:"status"`
+	Ticket    string `json:"ticket,omitempty"`
+	Status    string `json:"status,omitempty"`
+	ID        string `json:"id,omitempty"`
+	State     string `json:"state,omitempty"`
 	Priority  string `json:"priority,omitempty"`
 	Kind      string `json:"kind,omitempty"`
 	Severity  string `json:"severity"` // critical | warning | hint
@@ -48,6 +51,31 @@ func LatestTickets(rows []ledger.Row) []ledger.Row {
 			continue
 		}
 		id, _ := r["ticket"].(string)
+		if id == "" {
+			continue
+		}
+		n, _ := r["n"].(float64)
+		if cur, ok := best[id]; !ok || n > cur.n {
+			best[id] = entry{n, r}
+		}
+	}
+	out := make([]ledger.Row, 0, len(best))
+	for _, e := range best {
+		out = append(out, e.row)
+	}
+	return out
+}
+
+// LatestCanonicalTickets returns one latest row per canonical v1 ticket ID. The name
+// is historical and should be collapsed in a later mechanical rename.
+func LatestCanonicalTickets(rows []ledger.Row) []ledger.Row {
+	type entry struct {
+		n   float64
+		row ledger.Row
+	}
+	best := map[string]entry{}
+	for _, r := range rows {
+		id, _ := r["id"].(string)
 		if id == "" {
 			continue
 		}
@@ -111,6 +139,56 @@ func ComputeProject(ticketRows, worklogRows []ledger.Row, role string) ProjectGu
 		items = items[:8]
 	}
 	pg.Highlights = items
+	return pg
+}
+
+// ComputeCanonicalProject returns project-wide guidance for canonical v1 ledgers. The
+// name is historical and should be collapsed in a later mechanical rename.
+func ComputeCanonicalProject(ticketRows, worklogRows []ledger.Row, role string) ProjectGuidance {
+	latest := LatestCanonicalTickets(ticketRows)
+	pg := ProjectGuidance{Role: role}
+
+	for _, r := range latest {
+		s, _ := r["state"].(string)
+		switch s {
+		case "ready", "doing":
+			pg.Counts.Active++
+		case "blocked":
+			pg.Counts.Blocked++
+		case "review":
+			pg.Counts.AuditReady++
+		case "rework":
+			pg.Counts.ChangesRequested++
+		case "done":
+			if !isCanonicalAuditPassRow(r) {
+				pg.Counts.StalePremature++
+			}
+		}
+	}
+
+	var items []ProjectQueueItem
+	for _, r := range latest {
+		if it, ok := classifyCanonicalForRole(r, role); ok {
+			items = append(items, it)
+		}
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		si, sj := severityRank(items[i].Severity), severityRank(items[j].Severity)
+		if si != sj {
+			return si < sj
+		}
+		pi, pj := priorityRank(items[i].Priority), priorityRank(items[j].Priority)
+		if pi != pj {
+			return pi < pj
+		}
+		return items[i].ID < items[j].ID
+	})
+	if len(items) > 8 {
+		items = items[:8]
+	}
+	pg.Highlights = items
+	_ = worklogRows
 	return pg
 }
 
@@ -202,6 +280,94 @@ func classifyForRole(r ledger.Row, role string) (ProjectQueueItem, bool) {
 	}, true
 }
 
+func classifyCanonicalForRole(r ledger.Row, role string) (ProjectQueueItem, bool) {
+	s, _ := r["state"].(string)
+	id, _ := r["id"].(string)
+	p, _ := r["priority"].(string)
+	k, _ := r["type"].(string)
+
+	relevant := false
+	severity := "hint"
+	reason := ""
+	suggested := ""
+
+	if role == "" || role == "implementer" {
+		switch s {
+		case "doing":
+			relevant = true
+			reason = "active implementation"
+			suggested = "ldgr next --ticket " + id
+			if p == "P0" {
+				severity = "warning"
+			}
+		case "rework":
+			relevant = true
+			severity = "warning"
+			reason = "audit returned changes"
+			suggested = "ldgr ticket event --json @-  # state=doing"
+		case "ready":
+			bb, _ := r["blocked_by"].([]any)
+			if len(bb) == 0 {
+				relevant = true
+				reason = "ready to claim"
+				suggested = "ldgr ticket event --json @-  # state=doing"
+			}
+		case "blocked":
+			if p == "P0" || p == "P1" {
+				relevant = true
+				severity = "critical"
+				reason = "high-priority blocker"
+				suggested = "ldgr next --ticket " + id
+			}
+		}
+	}
+
+	if role == "auditor" || role == "" {
+		if s == "review" {
+			relevant = true
+			severity = "warning"
+			reason = "awaiting audit"
+			suggested = "ldgr suggest audit --ticket " + id
+		}
+	}
+
+	if role == "planner" || role == "" {
+		if s == "backlog" {
+			relevant = true
+			reason = "needs plan / acceptance"
+			suggested = "ldgr next --ticket " + id
+		}
+		if s == "rework" {
+			relevant = true
+			severity = "warning"
+			reason = "plan may need adjustment after audit"
+			suggested = "ldgr next --ticket " + id
+		}
+	}
+
+	if role == "maintainer" || role == "" {
+		if s == "done" && !isCanonicalAuditPassRow(r) {
+			relevant = true
+			severity = "critical"
+			reason = "weak done (no canonical v1 audit-pass event)"
+			suggested = "ldgr next --ticket " + id
+		}
+	}
+
+	if !relevant {
+		return ProjectQueueItem{}, false
+	}
+	return ProjectQueueItem{
+		ID:        id,
+		State:     s,
+		Priority:  p,
+		Kind:      k,
+		Severity:  severity,
+		Reason:    reason,
+		Suggested: suggested,
+	}, true
+}
+
 func isAuditPassRow(r ledger.Row) bool {
 	if role, _ := r["role"].(string); role != "audit" {
 		return false
@@ -210,6 +376,21 @@ func isAuditPassRow(r ledger.Row) bool {
 		return false
 	}
 	return true
+}
+
+func isCanonicalAuditPassRow(r ledger.Row) bool {
+	event, _ := r["event"].(map[string]any)
+	if event == nil {
+		return false
+	}
+	if role, _ := event["role"].(string); role != "auditor" {
+		return false
+	}
+	if result, _ := event["result"].(string); result != "pass" {
+		return false
+	}
+	_, ok := event["reviewed_n"].(float64)
+	return ok
 }
 
 func severityRank(s string) int {
@@ -257,11 +438,21 @@ func RenderProjectText(g ProjectGuidance) string {
 
 	for _, h := range g.Highlights {
 		sev := strings.ToUpper(h.Severity[:1]) + h.Severity[1:]
-		fmt.Fprintf(&b, "[%s] %s  status=%-18s priority=%s\n", sev, h.Ticket, h.Status, h.Priority)
+		id, state := h.Ticket, h.Status
+		if id == "" {
+			id = h.ID
+		}
+		if state == "" {
+			state = h.State
+		}
+		fmt.Fprintf(&b, "[%s] %s  status=%-18s priority=%s\n", sev, id, state, h.Priority)
 		fmt.Fprintf(&b, "        %s\n", h.Reason)
 		if h.Suggested != "" {
 			fmt.Fprintf(&b, "        $ %s\n", h.Suggested)
 		}
+	}
+	if g.WritingLanguage != "" {
+		fmt.Fprintf(&b, "\nWriting language: %s\n", g.WritingLanguage)
 	}
 	return b.String()
 }

@@ -138,7 +138,8 @@ func runInstructionsUninstall(dir string, keepBodies bool, stdout, stderr io.Wri
 
 func upsertPointer(current, bodyRel string) string {
 	pointer := instrMarkerStart + "\n" +
-		"See [`" + bodyRel + "`](" + bodyRel + ") for the full ldgr operating guide.\n" +
+		"See [`" + bodyRel + "`](" + bodyRel + ") for the authoritative ldgr operating guide.\n" +
+		"If local legacy ledger instructions below conflict, this ldgr guide wins.\n" +
 		instrMarkerEnd + "\n"
 	if i := strings.Index(current, legacyStart); i >= 0 {
 		if j := strings.Index(current[i:], legacyEnd); j >= 0 {
@@ -149,8 +150,14 @@ func upsertPointer(current, bodyRel string) string {
 			return current[:i] + pointer + current[end:]
 		}
 	}
-	if strings.Contains(current, instrMarkerStart) {
-		return current
+	if i := strings.Index(current, instrMarkerStart); i >= 0 {
+		if j := strings.Index(current[i:], instrMarkerEnd); j >= 0 {
+			end := i + j + len(instrMarkerEnd)
+			if end < len(current) && current[end] == '\n' {
+				end++
+			}
+			return current[:i] + pointer + current[end:]
+		}
 	}
 	if current == "" {
 		return pointer

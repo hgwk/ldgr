@@ -64,6 +64,40 @@ func TestAppend_OverridesCallerSuppliedN(t *testing.T) {
 	}
 }
 
+func TestAppend_BumpsTimestampAfterLastRow(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "tickets.jsonl")
+	lock := filepath.Join(dir, ".lock")
+
+	if _, err := Append(p, lock, Row{"ticket": "a", "ts": "2026-05-15T22:35:00Z"}); err != nil {
+		t.Fatalf("append1: %v", err)
+	}
+	r, err := Append(p, lock, Row{"ticket": "b", "ts": "2026-05-15T01:12:57Z"})
+	if err != nil {
+		t.Fatalf("append2: %v", err)
+	}
+	if got := r["ts"]; got != "2026-05-15T22:35:01Z" {
+		t.Fatalf("expected bumped ts, got %v", got)
+	}
+}
+
+func TestAppend_BumpsTimestampAfterFractionalLastRow(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "tickets.jsonl")
+	lock := filepath.Join(dir, ".lock")
+
+	if _, err := Append(p, lock, Row{"ticket": "a", "ts": "2026-05-15T22:35:00.500Z"}); err != nil {
+		t.Fatalf("append1: %v", err)
+	}
+	r, err := Append(p, lock, Row{"ticket": "b", "ts": "2026-05-15T22:35:00Z"})
+	if err != nil {
+		t.Fatalf("append2: %v", err)
+	}
+	if got := r["ts"]; got != "2026-05-15T22:35:01Z" {
+		t.Fatalf("expected bumped ts after fractional row, got %v", got)
+	}
+}
+
 func TestAppend_RemovesLockOnSuccess(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "tickets.jsonl")

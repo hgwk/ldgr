@@ -47,6 +47,36 @@ func TestNext_JSONOutputShape(t *testing.T) {
 	}
 }
 
+func TestNext_IncludesWritingLanguage(t *testing.T) {
+	target, store := mustInit(t)
+	if err := RunInit(target, InitOpts{Slug: "myapp", WritingLanguage: "ko"}, store); err != nil {
+		t.Fatalf("set language: %v", err)
+	}
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := `{"ticket":"WL-1","parent_ticket":"BUG","role":"impl","status":"open","task":"작업","scope":"repo","paths":[],"blocked_by":[]}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var text bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "WL-1"}, &text, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next text failed")
+	}
+	if !strings.Contains(text.String(), "Writing language: ko") {
+		t.Fatalf("missing text language hint: %s", text.String())
+	}
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "WL-1", "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next json failed")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if got["writing_language"] != "ko" {
+		t.Fatalf("missing json writing_language: %+v", got)
+	}
+}
+
 func TestNext_MissingTicketFails(t *testing.T) {
 	target, _ := mustInit(t)
 	var errb bytes.Buffer
@@ -146,4 +176,72 @@ func TestNext_GitFlagWithJSON(t *testing.T) {
 	}
 	// git key may or may not be present when --git is used in non-git dir, that's OK
 	// We just want no error and valid JSON.
+}
+
+func TestNextCanonical_TicketScopedTextAndJSON(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"NEXT-CANON","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("seed canonical v1 add failed")
+	}
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"NEXT-CANON","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("seed canonical v1 event failed")
+	}
+
+	var text bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "NEXT-CANON"}, &text, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next canonical v1 text failed")
+	}
+	if !strings.Contains(text.String(), "NEXT-CANON is doing") || !strings.Contains(text.String(), "review") {
+		t.Fatalf("unexpected canonical v1 text guidance: %s", text.String())
+	}
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--ticket", "NEXT-CANON", "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next canonical v1 json failed")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if got["id"] != "NEXT-CANON" || got["state"] != "doing" {
+		t.Fatalf("canonical v1 json should use id/state: %+v", got)
+	}
+	if _, ok := got["ticket"]; ok {
+		t.Fatalf("canonical v1 json should not include v1 ticket field: %+v", got)
+	}
+	if _, ok := got["status"]; ok {
+		t.Fatalf("canonical v1 json should not include v1 status field: %+v", got)
+	}
+}
+
+func TestNextCanonical_ProjectQueueUsesCanonicalVocabulary(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"PRJ-CANON","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P0","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next canonical v1 project json failed")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	items, _ := got["highlights"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("expected canonical v1 project highlight: %+v", got)
+	}
+	first, _ := items[0].(map[string]any)
+	if first["id"] != "PRJ-CANON" || first["state"] != "ready" {
+		t.Fatalf("expected id/state in canonical v1 queue item: %+v", first)
+	}
+	if _, ok := first["ticket"]; ok {
+		t.Fatalf("canonical v1 queue item should not include ticket: %+v", first)
+	}
+	if _, ok := first["status"]; ok {
+		t.Fatalf("canonical v1 queue item should not include status: %+v", first)
+	}
 }

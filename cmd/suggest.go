@@ -9,6 +9,7 @@ import (
 
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
+	"github.com/hgwk/ldgr/internal/lifecycle"
 )
 
 func init() {
@@ -55,7 +56,13 @@ func loadTicketContext(target, ticket string, allowNew bool, stderr io.Writer) (
 		fmt.Fprintln(stderr, err)
 		return nil, nil, nil, "", 1
 	}
-	latest, ok := findLatestTicket(rows, ticket)
+	var latest ledger.Row
+	var ok bool
+	if isCanonicalTarget(dir) {
+		latest, ok = findLatestCanonicalTicket(rows, ticket)
+	} else {
+		latest, ok = findLatestTicket(rows, ticket)
+	}
 	if !ok && !allowNew {
 		fmt.Fprintf(stderr, "ticket %q not found\n", ticket)
 		return nil, nil, nil, "", 1
@@ -71,11 +78,11 @@ func suggestWorklogCmd(rest []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
-	latest, _, worklog, _, code := loadTicketContext(*target, *ticket, false, stderr)
+	latest, _, worklog, dir, code := loadTicketContext(*target, *ticket, false, stderr)
 	if code != 0 {
 		return code
 	}
-	return suggestWorklog(latest, worklog, stdout)
+	return suggestWorklog(latest, worklog, loadWritingLanguage(dir), stdout)
 }
 
 func suggestCommitCmd(rest []string, stdout, stderr io.Writer) int {
@@ -86,11 +93,11 @@ func suggestCommitCmd(rest []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
-	latest, _, worklog, _, code := loadTicketContext(*target, *ticket, false, stderr)
+	latest, _, worklog, dir, code := loadTicketContext(*target, *ticket, false, stderr)
 	if code != 0 {
 		return code
 	}
-	return suggestCommit(latest, worklog, *allowUnaudited, stdout)
+	return suggestCommit(latest, worklog, *allowUnaudited, loadWritingLanguage(dir), stdout)
 }
 
 func suggestAuditCmd(rest []string, stdout, stderr io.Writer) int {
@@ -100,16 +107,16 @@ func suggestAuditCmd(rest []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
-	latest, _, worklog, _, code := loadTicketContext(*target, *ticket, false, stderr)
+	latest, _, worklog, dir, code := loadTicketContext(*target, *ticket, false, stderr)
 	if code != 0 {
 		return code
 	}
-	return suggestAudit(latest, worklog, stdout)
+	return suggestAudit(latest, worklog, loadWritingLanguage(dir), stdout)
 }
 
 func suggestCorrectionCmd(rest []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("suggest correction")
-	_ = fs.String("target", "", "")
+	target := fs.String("target", "", "")
 	ticket := fs.String("ticket", "", "")
 	invalidatesN := fs.Int("invalidates-n", 0, "")
 	notes := fs.String("notes", "", "")
@@ -124,7 +131,10 @@ func suggestCorrectionCmd(rest []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--invalidates-n is required (positive integer)")
 		return 2
 	}
-	return suggestCorrection(*ticket, *invalidatesN, *notes, stdout)
+	if isCanonicalTarget(resolveTarget(*target)) {
+		return suggestCorrectionCanonical(*ticket, *invalidatesN, *notes, loadWritingLanguage(resolveTarget(*target)), stdout)
+	}
+	return suggestCorrection(*ticket, *invalidatesN, *notes, loadWritingLanguage(resolveTarget(*target)), stdout)
 }
 
 func suggestPlanCmd(rest []string, stdout, stderr io.Writer) int {
@@ -134,11 +144,14 @@ func suggestPlanCmd(rest []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
-	latest, _, _, _, code := loadTicketContext(*target, *ticket, true, stderr)
+	latest, _, _, dir, code := loadTicketContext(*target, *ticket, true, stderr)
 	if code != 0 {
 		return code
 	}
-	return suggestPlan(latest, *ticket, stdout)
+	if isCanonicalTarget(dir) {
+		return suggestPlanCanonical(latest, *ticket, loadWritingLanguage(dir), stdout)
+	}
+	return suggestPlan(latest, *ticket, loadWritingLanguage(dir), stdout)
 }
 
 func suggestPRCmd(rest []string, stdout, stderr io.Writer) int {
@@ -149,41 +162,58 @@ func suggestPRCmd(rest []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
-	latest, _, worklog, _, code := loadTicketContext(*target, *ticket, false, stderr)
+	latest, _, worklog, dir, code := loadTicketContext(*target, *ticket, false, stderr)
 	if code != 0 {
 		return code
 	}
-	return suggestPR(latest, worklog, *allowUnaudited, stdout)
+	return suggestPR(latest, worklog, *allowUnaudited, loadWritingLanguage(dir), stdout)
 }
 
 func ticketIsAuditPassDone(latest ledger.Row) bool {
-	if s, _ := latest["status"].(string); s != "done" {
-		return false
+	if _, isCanonical := latest["state"]; isCanonical {
+		return isCanonicalWorklogAllowed(latest)
 	}
-	if r, _ := latest["role"].(string); r != "audit" {
-		return false
-	}
-	if ar, _ := latest["audit_result"].(string); ar != "pass" {
-		return false
-	}
-	return true
+	return lifecycle.IsAuditPassDone(latest)
 }
 
-func suggestWorklog(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) int {
+func suggestWorklog(latest ledger.Row, worklog []ledger.Row, writingLanguage string, stdout io.Writer) int {
 	if !ticketIsAuditPassDone(latest) {
 		g := guidance.Compute(latest, worklog)
+		if _, isCanonical := latest["state"]; isCanonical {
+			g = guidance.ComputeCanonical(latest, worklog)
+		}
+		g.WritingLanguage = writingLanguage
 		fmt.Fprint(stdout, guidance.RenderText(g))
+		return 0
+	}
+	if _, isCanonical := latest["state"]; isCanonical {
+		skeleton := map[string]any{
+			"ticket":   latest["id"],
+			"actor":    latest["owner"],
+			"title":    latest["title"],
+			"summary":  localizedShippedResult(writingLanguage, stringField(latest, "title")),
+			"paths":    []any{},
+			"commands": ifSliceField(latest, "evidence"),
+			"notes":    "",
+		}
+		addWritingLanguage(skeleton, writingLanguage)
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(skeleton); err != nil {
+			return 1
+		}
 		return 0
 	}
 	skeleton := map[string]any{
 		"ticket":   latest["ticket"],
 		"task":     latest["task"],
 		"scope":    latest["scope"],
-		"result":   "shipped: " + stringField(latest, "task"),
+		"result":   localizedShippedResult(writingLanguage, stringField(latest, "task")),
 		"paths":    latest["paths"],
 		"commands": ifSliceField(latest, "evidence"),
 		"notes":    "",
 	}
+	addWritingLanguage(skeleton, writingLanguage)
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(skeleton); err != nil {
@@ -192,9 +222,13 @@ func suggestWorklog(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) i
 	return 0
 }
 
-func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, stdout io.Writer) int {
+func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, writingLanguage string, stdout io.Writer) int {
+	if _, isCanonical := latest["state"]; isCanonical {
+		return suggestCommitCanonical(latest, worklog, allowUnaudited, writingLanguage, stdout)
+	}
 	if !allowUnaudited && !ticketIsAuditPassDone(latest) {
 		g := guidance.Compute(latest, worklog)
+		g.WritingLanguage = writingLanguage
 		fmt.Fprint(stdout, guidance.RenderText(g))
 		fmt.Fprintln(stdout)
 		fmt.Fprintln(stdout, "Run with --allow-unaudited to emit the commit scaffold anyway.")
@@ -216,6 +250,7 @@ func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool,
 	}
 	fmt.Fprintln(stdout, line)
 	fmt.Fprintln(stdout)
+	printWritingLanguageHint(stdout, writingLanguage)
 	fmt.Fprintln(stdout, "## Summary")
 	fmt.Fprintf(stdout, "- %s\n", stringField(latest, "task"))
 	if notes := stringField(latest, "notes"); notes != "" {
@@ -232,6 +267,61 @@ func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool,
 		}
 	}
 	return 0
+}
+
+func suggestCommitCanonical(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, writingLanguage string, stdout io.Writer) int {
+	if !allowUnaudited && !ticketIsAuditPassDone(latest) {
+		g := guidance.ComputeCanonical(latest, worklog)
+		g.WritingLanguage = writingLanguage
+		fmt.Fprint(stdout, guidance.RenderText(g))
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Run with --allow-unaudited to emit the commit scaffold anyway.")
+		return 0
+	}
+	commitType := commitTypeFromCanonical(stringField(latest, "type"), stringField(latest, "area"))
+	scope := strings.ToLower(stringField(latest, "parent"))
+	if scope == "" || scope == "root" {
+		scope = ""
+	}
+	subject := truncate(stringField(latest, "title"), 72)
+	if scope != "" {
+		fmt.Fprintf(stdout, "%s(%s): %s\n\n", commitType, scope, subject)
+	} else {
+		fmt.Fprintf(stdout, "%s: %s\n\n", commitType, subject)
+	}
+	printWritingLanguageHint(stdout, writingLanguage)
+	fmt.Fprintln(stdout, "## Summary")
+	fmt.Fprintf(stdout, "- %s\n\n", stringField(latest, "title"))
+	fmt.Fprintln(stdout, "## Verification")
+	evidence := stringSliceFromRow(latest, "evidence")
+	if len(evidence) == 0 {
+		fmt.Fprintln(stdout, "- TODO: paste the commands you ran (ldgr verify, go test, etc.)")
+	} else {
+		for _, e := range evidence {
+			fmt.Fprintf(stdout, "- %s\n", e)
+		}
+	}
+	return 0
+}
+
+func commitTypeFromCanonical(kind, area string) string {
+	switch kind {
+	case "issue":
+		return "fix"
+	case "audit", "ops":
+		return "chore"
+	case "plan":
+		return "docs"
+	}
+	switch area {
+	case "docs":
+		return "docs"
+	case "test":
+		return "test"
+	case "infra", "ops", "release":
+		return "chore"
+	}
+	return "feat"
 }
 
 func commitTypeFromCategory(cat string) string {
@@ -283,10 +373,14 @@ func stringField(r ledger.Row, k string) string {
 	return v
 }
 
-func suggestAudit(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) int {
+func suggestAudit(latest ledger.Row, worklog []ledger.Row, writingLanguage string, stdout io.Writer) int {
+	if _, isCanonical := latest["state"]; isCanonical {
+		return suggestAuditCanonical(latest, worklog, writingLanguage, stdout)
+	}
 	// Check if latest status is audit_ready
 	if status, _ := latest["status"].(string); status != "audit_ready" {
 		g := guidance.Compute(latest, worklog)
+		g.WritingLanguage = writingLanguage
 		fmt.Fprint(stdout, guidance.RenderText(g))
 		fmt.Fprintln(stdout)
 		fmt.Fprintln(stdout, "Ticket must be in 'audit_ready' status to emit audit skeletons.")
@@ -314,6 +408,8 @@ func suggestAudit(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) int
 		"evidence":     []any{},
 		"reviewed_n":   reviewedN,
 	}
+	addWritingLanguage(pass, writingLanguage)
+	addWritingLanguage(changes, writingLanguage)
 
 	skeletons := []map[string]any{pass, changes}
 	enc := json.NewEncoder(stdout)
@@ -324,7 +420,51 @@ func suggestAudit(latest ledger.Row, worklog []ledger.Row, stdout io.Writer) int
 	return 0
 }
 
-func suggestCorrection(ticket string, invalidatesN int, notes string, stdout io.Writer) int {
+func suggestAuditCanonical(latest ledger.Row, worklog []ledger.Row, writingLanguage string, stdout io.Writer) int {
+	if state, _ := latest["state"].(string); state != "review" {
+		g := guidance.ComputeCanonical(latest, worklog)
+		g.WritingLanguage = writingLanguage
+		fmt.Fprint(stdout, guidance.RenderText(g))
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Ticket must be in 'review' state to emit canonical v1 audit skeletons.")
+		return 0
+	}
+	reviewedN := int(latest["n"].(float64))
+	pass := map[string]any{
+		"id":       latest["id"],
+		"state":    "done",
+		"evidence": []any{},
+		"event": map[string]any{
+			"role":       "auditor",
+			"result":     "pass",
+			"reviewed_n": reviewedN,
+			"summary":    "passed",
+			"notes":      "",
+		},
+	}
+	changes := map[string]any{
+		"id":    latest["id"],
+		"state": "rework",
+		"event": map[string]any{
+			"role":       "auditor",
+			"result":     "changes_requested",
+			"reviewed_n": reviewedN,
+			"summary":    "changes requested",
+			"notes":      "",
+		},
+	}
+	addWritingLanguage(pass, writingLanguage)
+	addWritingLanguage(changes, writingLanguage)
+	skeletons := []map[string]any{pass, changes}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(skeletons); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func suggestCorrection(ticket string, invalidatesN int, notes string, writingLanguage string, stdout io.Writer) int {
 	skeleton := map[string]any{
 		"ticket":        ticket,
 		"role":          "ops",
@@ -333,6 +473,7 @@ func suggestCorrection(ticket string, invalidatesN int, notes string, stdout io.
 		"notes":         notes,
 		"task":          fmt.Sprintf("invalidate n=%d", invalidatesN),
 	}
+	addWritingLanguage(skeleton, writingLanguage)
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(skeleton); err != nil {
@@ -341,7 +482,28 @@ func suggestCorrection(ticket string, invalidatesN int, notes string, stdout io.
 	return 0
 }
 
-func suggestPlan(latest ledger.Row, ticket string, stdout io.Writer) int {
+func suggestCorrectionCanonical(ticket string, invalidatesN int, notes string, writingLanguage string, stdout io.Writer) int {
+	skeleton := map[string]any{
+		"id":            ticket,
+		"state":         "dropped",
+		"invalidates_n": invalidatesN,
+		"event": map[string]any{
+			"role":    "operator",
+			"result":  "corrected",
+			"summary": fmt.Sprintf("invalidate n=%d", invalidatesN),
+			"notes":   notes,
+		},
+	}
+	addWritingLanguage(skeleton, writingLanguage)
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(skeleton); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func suggestPlan(latest ledger.Row, ticket string, writingLanguage string, stdout io.Writer) int {
 	// If ticket doesn't exist (latest is nil), create a new skeleton with defaults
 	var parentTicket, scope string
 	var paths []any
@@ -369,12 +531,13 @@ func suggestPlan(latest ledger.Row, ticket string, stdout io.Writer) int {
 		"kind":          "plan",
 		"priority":      "P2",
 		"status":        "open",
-		"task":          "<one-line>",
+		"task":          localizedTaskPlaceholder(writingLanguage),
 		"scope":         scope,
 		"paths":         paths,
 		"blocked_by":    []any{},
-		"acceptance":    []any{},
+		"acceptance":    localizedAcceptancePlaceholder(writingLanguage),
 	}
+	addWritingLanguage(skeleton, writingLanguage)
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(skeleton); err != nil {
@@ -383,9 +546,50 @@ func suggestPlan(latest ledger.Row, ticket string, stdout io.Writer) int {
 	return 0
 }
 
-func suggestPR(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, stdout io.Writer) int {
+func suggestPlanCanonical(latest ledger.Row, ticket string, writingLanguage string, stdout io.Writer) int {
+	parent := "ROOT"
+	area := "ops"
+	acceptance := localizedAcceptancePlaceholder(writingLanguage)
+	if latest != nil {
+		parent = stringField(latest, "parent")
+		area = stringField(latest, "area")
+		if v, ok := latest["acceptance"].([]any); ok {
+			acceptance = v
+		}
+	}
+	skeleton := map[string]any{
+		"id":         ticket,
+		"parent":     parent,
+		"type":       "plan",
+		"state":      "backlog",
+		"area":       area,
+		"priority":   "P2",
+		"title":      localizedTaskPlaceholder(writingLanguage),
+		"blocked_by": []any{},
+		"acceptance": acceptance,
+		"evidence":   []any{},
+		"event": map[string]any{
+			"role":    "planner",
+			"summary": localizedTaskPlaceholder(writingLanguage),
+			"notes":   "",
+		},
+	}
+	addWritingLanguage(skeleton, writingLanguage)
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(skeleton); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func suggestPR(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, writingLanguage string, stdout io.Writer) int {
+	if _, isCanonical := latest["state"]; isCanonical {
+		return suggestPRCanonical(latest, worklog, allowUnaudited, writingLanguage, stdout)
+	}
 	if !allowUnaudited && !ticketIsAuditPassDone(latest) {
 		g := guidance.Compute(latest, worklog)
+		g.WritingLanguage = writingLanguage
 		fmt.Fprint(stdout, guidance.RenderText(g))
 		fmt.Fprintln(stdout)
 		fmt.Fprintln(stdout, "Run with --allow-unaudited to emit the PR scaffold anyway.")
@@ -398,6 +602,7 @@ func suggestPR(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, std
 
 	fmt.Fprintf(stdout, "# PR: %s %s\n", ticketID, truncatedTask)
 	fmt.Fprintln(stdout)
+	printWritingLanguageHint(stdout, writingLanguage)
 	fmt.Fprintln(stdout, "## Summary")
 	fmt.Fprintf(stdout, "- %s\n", task)
 	fmt.Fprintln(stdout)
@@ -418,4 +623,73 @@ func suggestPR(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, std
 	}
 	fmt.Fprintf(stdout, "- %s (audit_result=%s)\n", ticketID, auditResult)
 	return 0
+}
+
+func suggestPRCanonical(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool, writingLanguage string, stdout io.Writer) int {
+	if !allowUnaudited && !ticketIsAuditPassDone(latest) {
+		g := guidance.ComputeCanonical(latest, worklog)
+		g.WritingLanguage = writingLanguage
+		fmt.Fprint(stdout, guidance.RenderText(g))
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Run with --allow-unaudited to emit the PR scaffold anyway.")
+		return 0
+	}
+	ticketID := stringField(latest, "id")
+	title := stringField(latest, "title")
+	fmt.Fprintf(stdout, "# PR: %s %s\n\n", ticketID, truncate(title, 60))
+	printWritingLanguageHint(stdout, writingLanguage)
+	fmt.Fprintln(stdout, "## Summary")
+	fmt.Fprintf(stdout, "- %s\n\n", title)
+	fmt.Fprintln(stdout, "## Verification")
+	evidence := stringSliceFromRow(latest, "evidence")
+	if len(evidence) == 0 {
+		fmt.Fprintln(stdout, "- TODO: paste the commands you ran (ldgr verify, go test, etc.)")
+	} else {
+		for _, e := range evidence {
+			fmt.Fprintf(stdout, "- %s\n", e)
+		}
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "## Related ticket")
+	result := "pending"
+	if event, _ := latest["event"].(map[string]any); event != nil {
+		if v, _ := event["result"].(string); v != "" {
+			result = v
+		}
+	}
+	fmt.Fprintf(stdout, "- %s (event.result=%s)\n", ticketID, result)
+	return 0
+}
+
+func addWritingLanguage(skeleton map[string]any, writingLanguage string) {
+	if writingLanguage != "" {
+		skeleton["writing_language"] = writingLanguage
+	}
+}
+
+func printWritingLanguageHint(stdout io.Writer, writingLanguage string) {
+	if writingLanguage != "" {
+		fmt.Fprintf(stdout, "Writing language: %s\n\n", writingLanguage)
+	}
+}
+
+func localizedTaskPlaceholder(writingLanguage string) string {
+	if writingLanguage == "ko" {
+		return "<한 줄 작업 설명>"
+	}
+	return "<one-line>"
+}
+
+func localizedAcceptancePlaceholder(writingLanguage string) []any {
+	if writingLanguage == "ko" {
+		return []any{"<검증 가능한 완료 조건>"}
+	}
+	return []any{}
+}
+
+func localizedShippedResult(writingLanguage, task string) string {
+	if writingLanguage == "ko" {
+		return "출시 완료: " + task
+	}
+	return "shipped: " + task
 }

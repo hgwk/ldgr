@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hgwk/ldgr/internal/config"
 	"github.com/hgwk/ldgr/internal/registry"
 )
 
@@ -72,6 +73,67 @@ func TestRunInit_IsIdempotent(t *testing.T) {
 	}
 	if r2.Projects[0].ProjectID != id {
 		t.Fatalf("project_id should be preserved across re-init: %s vs %s", id, r2.Projects[0].ProjectID)
+	}
+}
+
+func TestRunInit_WritingLanguage(t *testing.T) {
+	target := t.TempDir()
+	regDir := t.TempDir()
+	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
+
+	if err := RunInit(target, InitOpts{Slug: "myapp", WritingLanguage: "ko"}, store); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	cfg, err := config.Load(filepath.Join(target, "ledger", "config.json"))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.WritingLanguage != "ko" {
+		t.Fatalf("expected writing_language=ko, got %+v", cfg)
+	}
+
+	if err := RunInit(target, InitOpts{Slug: "myapp", WritingLanguage: "en"}, store); err != nil {
+		t.Fatalf("re-init: %v", err)
+	}
+	cfg, _ = config.Load(filepath.Join(target, "ledger", "config.json"))
+	if cfg.WritingLanguage != "en" {
+		t.Fatalf("expected re-init to update writing_language=en, got %+v", cfg)
+	}
+}
+
+func TestRunInit_WritingLanguagePreservesLegacyConfigShape(t *testing.T) {
+	target := t.TempDir()
+	regDir := t.TempDir()
+	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
+	if err := os.MkdirAll(filepath.Join(target, "ledger"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(target, "ledger", "config.json")
+	legacy := `{
+  "version": 1,
+  "project_id": "9f8a7c6b5d4e3f2a1b0c9d8e7f6a5b4c",
+  "slug": "legacy",
+  "name": "Legacy",
+  "parents": [
+    { "ticket": "MA", "label": "Milestone A", "match": ["^as-ma-"] }
+  ],
+  "generated": { "ticketTree": "docs/release/TICKETS.md" },
+  "branch": { "defaultPrefix": "work" }
+}`
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := RunInit(target, InitOpts{WritingLanguage: "ko"}, store); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	for _, needle := range []string{`"writing_language": "ko"`, `"generated"`, `"ticketTree"`, `"branch"`, `"label": "Milestone A"`} {
+		if !contains(string(data), needle) {
+			t.Fatalf("config lost %q:\n%s", needle, string(data))
+		}
 	}
 }
 

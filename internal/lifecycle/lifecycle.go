@@ -43,6 +43,10 @@ var allowedTransitions = map[string]map[string]bool{
 // ticket (ticket add).
 func Validate(row ledger.Row, prev ledger.Row) *Violation {
 	status, _ := row["status"].(string)
+	prevStatus := ""
+	if prev != nil {
+		prevStatus, _ = prev["status"].(string)
+	}
 
 	// Correction-row escape hatch: invalidates_n rows bypass all checks.
 	if _, hasInv := row["invalidates_n"]; hasInv {
@@ -63,10 +67,6 @@ func Validate(row ledger.Row, prev ledger.Row) *Violation {
 
 	// Transition graph enforcement (only when status is set).
 	if status != "" {
-		prevStatus := ""
-		if prev != nil {
-			prevStatus, _ = prev["status"].(string)
-		}
 		// Same-status carry-forward is always allowed (metadata-only updates).
 		if prevStatus != status {
 			allowed := allowedTransitions[prevStatus]
@@ -93,7 +93,7 @@ func Validate(row ledger.Row, prev ledger.Row) *Violation {
 			}
 		}
 	case "done":
-		if !isAuditPassClose(row) {
+		if !isAuditPassCloseBody(row) {
 			ticket := orPlaceholder(stringFromRow(row, "ticket"), "<ticket>")
 			return &Violation{
 				Code:    "IMPL_DIRECT_DONE",
@@ -102,12 +102,8 @@ func Validate(row ledger.Row, prev ledger.Row) *Violation {
 					fmt.Sprintf("  ldgr next --ticket %s\n", ticket),
 			}
 		}
-		if !hasPositiveNumber(row, "reviewed_n") {
-			return &Violation{
-				Code:    "AUDIT_PASS_NEEDS_REVIEWED_N",
-				Message: "audit pass row requires reviewed_n pointing at the audit_ready row.",
-				Hint:    "Include `reviewed_n: <impl row n>` in the audit pass JSON.\n",
-			}
+		if v := validateReviewedN(row, prev, prevStatus, "AUDIT_PASS_NEEDS_REVIEWED_N"); v != nil {
+			return v
 		}
 	case "changes_requested":
 		if r, _ := row["role"].(string); r != "audit" {
@@ -119,8 +115,8 @@ func Validate(row ledger.Row, prev ledger.Row) *Violation {
 		if notes, _ := row["audit_notes"].(string); strings.TrimSpace(notes) == "" {
 			return changesRequestedViolation()
 		}
-		if !hasPositiveNumber(row, "reviewed_n") {
-			return changesRequestedViolation()
+		if v := validateReviewedN(row, prev, prevStatus, "CHANGES_REQUESTED_INVALID"); v != nil {
+			return v
 		}
 	}
 
@@ -136,11 +132,18 @@ func changesRequestedViolation() *Violation {
 	}
 }
 
-// isAuditPassClose recognises the only legal `status=done` path:
-// role=audit AND audit_result=pass AND non-empty evidence array.
-// Evidence entries that are not non-empty strings are ignored; the audit
-// passes if at least one trimmed-non-empty string is present.
-func isAuditPassClose(row ledger.Row) bool {
+// IsAuditPassDone recognises the only strong delivery close:
+// status=done, role=audit, audit_result=pass, non-empty evidence, and a
+// positive reviewed_n. The caller can do a stronger history-aware check that
+// reviewed_n points at the relevant audit_ready row.
+func IsAuditPassDone(row ledger.Row) bool {
+	if s, _ := row["status"].(string); s != "done" {
+		return false
+	}
+	return isAuditPassCloseBody(row) && hasPositiveNumber(row, "reviewed_n")
+}
+
+func isAuditPassCloseBody(row ledger.Row) bool {
 	if r, _ := row["role"].(string); r != "audit" {
 		return false
 	}
@@ -148,6 +151,32 @@ func isAuditPassClose(row ledger.Row) bool {
 		return false
 	}
 	return hasNonEmptyStringList(row, "evidence")
+}
+
+func validateReviewedN(row, prev ledger.Row, prevStatus, code string) *Violation {
+	if !hasPositiveNumber(row, "reviewed_n") {
+		return &Violation{
+			Code:    code,
+			Message: "audit row requires reviewed_n pointing at the audit_ready row.",
+			Hint:    "Use `ldgr audit pass --ticket <id> --evidence ...` or `ldgr audit request-changes --ticket <id> --notes ...`.\n",
+		}
+	}
+	if prevStatus != "audit_ready" || prev == nil {
+		return nil
+	}
+	want, ok := numberAsInt(prev["n"])
+	if !ok {
+		return nil
+	}
+	got, ok := numberAsInt(row["reviewed_n"])
+	if !ok || got != want {
+		return &Violation{
+			Code:    code,
+			Message: fmt.Sprintf("reviewed_n must point at the current audit_ready row n=%d.", want),
+			Hint:    "Re-run the audit shortcut so reviewed_n is generated from the latest audit_ready row.\n",
+		}
+	}
+	return nil
 }
 
 // hasNonEmptyStringList checks if the given key contains a non-empty list
@@ -164,13 +193,22 @@ func hasNonEmptyStringList(row ledger.Row, key string) bool {
 
 // hasPositiveNumber checks if the given key contains a positive number.
 func hasPositiveNumber(row ledger.Row, key string) bool {
-	switch v := row[key].(type) {
+	_, ok := numberAsInt(row[key])
+	return ok
+}
+
+func numberAsInt(v any) (int, bool) {
+	switch v := v.(type) {
 	case float64:
-		return v > 0
+		if v > 0 && v == float64(int(v)) {
+			return int(v), true
+		}
 	case int:
-		return v > 0
+		if v > 0 {
+			return v, true
+		}
 	}
-	return false
+	return 0, false
 }
 
 // stringFromRow safely extracts a string value from the row.

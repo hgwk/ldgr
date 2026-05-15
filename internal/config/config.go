@@ -4,6 +4,7 @@ package config
 
 import (
 	"encoding/json"
+	"os"
 
 	"github.com/hgwk/ldgr/internal/jsonio"
 )
@@ -16,6 +17,7 @@ type Config struct {
 	Parents          []string `json:"parents"`
 	BranchConvention string   `json:"branch_convention"`
 	LogGoalChanges   bool     `json:"log_goal_changes"`
+	WritingLanguage  string   `json:"writing_language,omitempty"`
 }
 
 type rawConfig struct {
@@ -27,6 +29,7 @@ type rawConfig struct {
 	Parents          json.RawMessage `json:"parents"`
 	BranchConvention string          `json:"branch_convention"`
 	LogGoalChanges   bool            `json:"log_goal_changes"`
+	WritingLanguage  string          `json:"writing_language"`
 }
 
 type legacyParent struct {
@@ -50,6 +53,7 @@ func Default(slug, projectID, name string) Config {
 		Parents:          append([]string(nil), DefaultParents...),
 		BranchConvention: "work/{ticket}",
 		LogGoalChanges:   false,
+		WritingLanguage:  "",
 	}
 }
 
@@ -65,6 +69,7 @@ func Load(path string) (Config, error) {
 		Name:             raw.Name,
 		BranchConvention: raw.BranchConvention,
 		LogGoalChanges:   raw.LogGoalChanges,
+		WritingLanguage:  raw.WritingLanguage,
 	}
 	if c.SchemaVersion == 0 && raw.Version != 0 {
 		c.SchemaVersion = raw.Version
@@ -100,4 +105,41 @@ func hasEmptyParent(parents []string) bool {
 
 func Save(path string, c Config) error {
 	return jsonio.WriteJSON(path, c)
+}
+
+// SchemaVersion returns the config schema version. Missing legacy versions are
+// treated as schema v1 for compatibility.
+func SchemaVersion(path string) (int, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		return 0, err
+	}
+	if cfg.SchemaVersion == 0 {
+		return 1, nil
+	}
+	return cfg.SchemaVersion, nil
+}
+
+// PatchWritingLanguage updates only the writing_language key in an existing
+// config.json, preserving unknown legacy/project-specific fields.
+func PatchWritingLanguage(path, language string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	value, err := json.Marshal(language)
+	if err != nil {
+		return err
+	}
+	raw["writing_language"] = value
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	return os.WriteFile(path, out, 0o644)
 }

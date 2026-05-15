@@ -76,7 +76,7 @@ func LatestTickets(rows []ledger.Row) []ledger.Row {
 		if _, isGhost := invalidated[int(n)]; isGhost {
 			continue
 		}
-		id, _ := r["ticket"].(string)
+		id := ticketID(r)
 		if id == "" {
 			continue
 		}
@@ -98,8 +98,8 @@ func LatestTickets(rows []ledger.Row) []ledger.Row {
 		if a != b {
 			return a > b
 		}
-		ai, _ := out[i]["ticket"].(string)
-		bj, _ := out[j]["ticket"].(string)
+		ai := ticketID(out[i])
+		bj := ticketID(out[j])
 		return ai < bj
 	})
 	return out
@@ -109,7 +109,7 @@ func LatestTickets(rows []ledger.Row) []ledger.Row {
 func Tree(latest []ledger.Row) []TreeBucket {
 	buckets := map[string][]ledger.Row{}
 	for _, r := range latest {
-		p, _ := r["parent_ticket"].(string)
+		p := ticketParent(r)
 		buckets[p] = append(buckets[p], r)
 	}
 	parents := make([]string, 0, len(buckets))
@@ -130,11 +130,11 @@ func Tree(latest []ledger.Row) []TreeBucket {
 	return out
 }
 
-// StatusCounts tallies status values from latest rows.
+// StatusCounts tallies status/state values from latest rows.
 func StatusCounts(rows []ledger.Row) map[string]int {
 	out := map[string]int{}
 	for _, r := range rows {
-		s, _ := r["status"].(string)
+		s := ticketState(r)
 		if s == "" {
 			continue
 		}
@@ -154,7 +154,7 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 
 	ticketByID := map[string]ledger.Row{}
 	for _, t := range latest {
-		id, _ := t["ticket"].(string)
+		id := ticketID(t)
 		ticketByID[id] = t
 	}
 
@@ -178,7 +178,7 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 
 	// readyQueue: open, blocked_by empty.
 	for _, t := range latest {
-		if s, _ := t["status"].(string); s != "open" {
+		if s := ticketState(t); s != "open" && s != "ready" {
 			continue
 		}
 		bb, _ := t["blocked_by"].([]any)
@@ -199,9 +199,9 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 	// topBlockers: aggregate dependents.
 	blockerMap := map[string]*BlockerEntry{}
 	for _, t := range latest {
-		id, _ := t["ticket"].(string)
-		s, _ := t["status"].(string)
-		if s == "done" || s == "cancelled" {
+		id := ticketID(t)
+		s := ticketState(t)
+		if s == "done" || s == "cancelled" || s == "dropped" {
 			continue
 		}
 		bb, _ := t["blocked_by"].([]any)
@@ -214,8 +214,7 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 			if !ok {
 				entry = &BlockerEntry{Ticket: ref, Status: "missing"}
 				if b := ticketByID[ref]; b != nil {
-					bs, _ := b["status"].(string)
-					entry.Status = bs
+					entry.Status = ticketState(b)
 				}
 				blockerMap[ref] = entry
 			}
@@ -238,11 +237,11 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 	// staleInProgress: in_progress with age >= staleHours.
 	staleMS := int64(staleHours) * int64(time.Hour/time.Millisecond)
 	for _, t := range latest {
-		s, _ := t["status"].(string)
-		if s != "in_progress" {
+		s := ticketState(t)
+		if s != "in_progress" && s != "doing" {
 			continue
 		}
-		id, _ := t["ticket"].(string)
+		id := ticketID(t)
 		tsStr, _ := t["ts"].(string)
 		lastTouch := parseTS(tsStr)
 		var latestN int
@@ -261,7 +260,7 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 			continue
 		}
 		ins.StaleInProgress = append(ins.StaleInProgress, StaleEntry{
-			Ticket: id, Status: s, Task: stringField(t, "task"),
+			Ticket: id, Status: s, Task: ticketTitle(t),
 			AgeMS: age, LatestWorklogN: latestN,
 		})
 	}
@@ -274,11 +273,11 @@ func BuildInsights(ticketRows, worklogRows []ledger.Row, now time.Time, staleHou
 
 	// closedWithoutWorklog: done/cancelled with no worklog row by ticket id.
 	for _, t := range latest {
-		s, _ := t["status"].(string)
-		if s != "done" && s != "cancelled" {
+		s := ticketState(t)
+		if s != "done" {
 			continue
 		}
-		id, _ := t["ticket"].(string)
+		id := ticketID(t)
 		if _, has := worklogByTicket[id]; has {
 			continue
 		}
@@ -346,6 +345,71 @@ func parseTS(s string) time.Time {
 func stringField(r ledger.Row, k string) string {
 	v, _ := r[k].(string)
 	return v
+}
+
+func ticketID(r ledger.Row) string {
+	if v := stringField(r, "ticket"); v != "" {
+		return v
+	}
+	return stringField(r, "id")
+}
+
+func ticketParent(r ledger.Row) string {
+	if v := stringField(r, "parent_ticket"); v != "" {
+		return v
+	}
+	return stringField(r, "parent")
+}
+
+func ticketState(r ledger.Row) string {
+	if v := stringField(r, "status"); v != "" {
+		return v
+	}
+	return stringField(r, "state")
+}
+
+func ticketTitle(r ledger.Row) string {
+	if v := stringField(r, "task"); v != "" {
+		return v
+	}
+	return stringField(r, "title")
+}
+
+func ticketType(r ledger.Row) string {
+	if v := stringField(r, "kind"); v != "" {
+		return v
+	}
+	return stringField(r, "type")
+}
+
+func ticketOwner(r ledger.Row) string {
+	if v := stringField(r, "claimed_by"); v != "" {
+		return v
+	}
+	if v := stringField(r, "owner"); v != "" {
+		return v
+	}
+	return stringField(r, "agent")
+}
+
+func eventString(r ledger.Row, k string) string {
+	event, _ := r["event"].(map[string]any)
+	if event == nil {
+		return ""
+	}
+	v, _ := event[k].(string)
+	return v
+}
+
+func isTerminalState(state string) bool {
+	return state == "done" || state == "cancelled" || state == "dropped"
+}
+
+func isActiveState(state string) bool {
+	if state == "" || isTerminalState(state) {
+		return false
+	}
+	return true
 }
 
 // --- Dashboard (control tower) -------------------------------------------------
@@ -486,13 +550,13 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	// Progress.
 	var done, active, cancelled int
 	for _, r := range latest {
-		s, _ := r["status"].(string)
+		s := ticketState(r)
 		switch {
 		case s == "done":
 			done++
-		case s == "cancelled":
+		case s == "cancelled" || s == "dropped":
 			cancelled++
-		case activeStatuses[s]:
+		case activeStatuses[s] || isActiveState(s):
 			active++
 		}
 	}
@@ -509,8 +573,8 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	}
 	byParent := map[string]*pAgg{}
 	for _, r := range latest {
-		p, _ := r["parent_ticket"].(string)
-		s, _ := r["status"].(string)
+		p := ticketParent(r)
+		s := ticketState(r)
 		entry, ok := byParent[p]
 		if !ok {
 			entry = &pAgg{Parent: p}
@@ -519,12 +583,12 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 		switch {
 		case s == "done":
 			entry.Done++
-		case s == "cancelled":
+		case s == "cancelled" || s == "dropped":
 			entry.Cancelled++
 		case s == "blocked":
 			entry.Active++
 			entry.Blocked++
-		case activeStatuses[s]:
+		case activeStatuses[s] || isActiveState(s):
 			entry.Active++
 		}
 	}
@@ -545,14 +609,17 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	// Audit pipeline.
 	var auditReady, changesReq, weakDone int
 	for _, r := range latest {
-		s, _ := r["status"].(string)
+		s := ticketState(r)
 		switch s {
-		case "audit_ready":
+		case "audit_ready", "review":
 			auditReady++
-		case "changes_requested":
+		case "changes_requested", "rework":
 			changesReq++
 		case "done":
-			if ar, _ := r["audit_result"].(string); ar != "pass" {
+			if ar, _ := r["audit_result"].(string); ar == "pass" {
+				continue
+			}
+			if eventString(r, "result") != "pass" {
 				weakDone++
 			}
 		}
@@ -577,14 +644,14 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	}
 	knownTicket := map[string]struct{}{}
 	for _, t := range latest {
-		id, _ := t["ticket"].(string)
+		id := ticketID(t)
 		knownTicket[id] = struct{}{}
 	}
 	var closed, orphan, missingEv int
 	for _, t := range latest {
-		s, _ := t["status"].(string)
-		id, _ := t["ticket"].(string)
-		if s == "done" || s == "cancelled" {
+		s := ticketState(t)
+		id := ticketID(t)
+		if s == "done" {
 			if _, has := worklogByTicket[id]; !has {
 				closed++
 			}
@@ -631,8 +698,8 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 		}
 		ts, _ := t["ts"].(string)
 		pool = append(pool, stamped{ts: ts, item: RecentItem{
-			Kind: "ticket", Ticket: stringField(t, "ticket"), TS: ts,
-			Status: stringField(t, "status"), Task: stringField(t, "task"),
+			Kind: "ticket", Ticket: ticketID(t), TS: ts,
+			Status: ticketState(t), Task: ticketTitle(t),
 		}})
 	}
 	for _, w := range worklogRows {
@@ -648,6 +715,12 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 			Kind: "worklog", Ticket: stringField(w, "ticket"), TS: ts,
 			Task: stringField(w, "task"), Result: stringField(w, "result"),
 		}})
+		if pool[len(pool)-1].item.Task == "" {
+			pool[len(pool)-1].item.Task = stringField(w, "title")
+		}
+		if pool[len(pool)-1].item.Result == "" {
+			pool[len(pool)-1].item.Result = stringField(w, "summary")
+		}
 	}
 	sort.SliceStable(pool, func(i, j int) bool { return pool[i].ts > pool[j].ts })
 	if len(pool) > 20 {
@@ -661,8 +734,8 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	// Priority: only count active (open/in_progress/blocked/audit_ready/changes_requested).
 	var pc PriorityCounts
 	for _, t := range latest {
-		s, _ := t["status"].(string)
-		if !activeStatuses[s] {
+		s := ticketState(t)
+		if !activeStatuses[s] && !isActiveState(s) {
 			continue
 		}
 		p, _ := t["priority"].(string)
@@ -681,7 +754,7 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 	// Kind distribution: count ALL latest tickets by kind, sort by count desc, kind asc.
 	byKind := map[string]int{}
 	for _, t := range latest {
-		k, _ := t["kind"].(string)
+		k := ticketType(t)
 		if k == "" {
 			k = "—"
 		}
@@ -726,7 +799,8 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 
 // computeActiveAgents aggregates ticket and worklog rows from the trailing
 // 24h window, grouped by actor identity. Precedence per row:
-// claimed_by → agent → actor. Empty/missing values land in the unknown bucket.
+// claimed_by → owner → agent → actor → event.actor. Empty/missing values land
+// in the unknown bucket.
 // Excludes invalidate-companion rows and invalidated rows.
 func computeActiveAgents(ticketRows, worklogRows []ledger.Row, now time.Time) ActiveAgents {
 	out := ActiveAgents{WindowHours: int(activeAgentsWindow / time.Hour)}
@@ -756,10 +830,16 @@ func computeActiveAgents(ticketRows, worklogRows []ledger.Row, now time.Time) Ac
 			}
 			agent := stringField(r, "claimed_by")
 			if agent == "" {
+				agent = stringField(r, "owner")
+			}
+			if agent == "" {
 				agent = stringField(r, "agent")
 			}
 			if agent == "" {
 				agent = stringField(r, "actor")
+			}
+			if agent == "" {
+				agent = eventString(r, "actor")
 			}
 			if agent == "" {
 				out.UnknownCount++
@@ -774,7 +854,11 @@ func computeActiveAgents(ticketRows, worklogRows []ledger.Row, now time.Time) Ac
 			if t.After(a.latest) {
 				a.latest = t
 			}
-			if role := stringField(r, "role"); role != "" {
+			role := stringField(r, "role")
+			if role == "" {
+				role = eventString(r, "role")
+			}
+			if role != "" {
 				a.roles[role]++
 			}
 		}
@@ -831,7 +915,7 @@ func perTicketHistory(rows []ledger.Row) [][]ledger.Row {
 		if _, isGhost := invalidated[int(n)]; isGhost {
 			continue
 		}
-		id, _ := r["ticket"].(string)
+		id := ticketID(r)
 		if id == "" {
 			continue
 		}
@@ -854,12 +938,16 @@ func perTicketHistory(rows []ledger.Row) [][]ledger.Row {
 }
 
 // isAuditPassDone returns true for the strong-done predicate:
-// role == "audit" AND status == "done" AND audit_result == "pass".
+// legacy: role == "audit" AND status == "done" AND audit_result == "pass".
+// canonical v1: state == "done" AND event.role == "auditor" AND event.result == "pass".
 func isAuditPassDone(r ledger.Row) bool {
 	role, _ := r["role"].(string)
-	status, _ := r["status"].(string)
+	status := ticketState(r)
 	result, _ := r["audit_result"].(string)
-	return role == "audit" && status == "done" && result == "pass"
+	if role == "audit" && status == "done" && result == "pass" {
+		return true
+	}
+	return status == "done" && eventString(r, "role") == "auditor" && eventString(r, "result") == "pass"
 }
 
 // ComputeLifecycleLatency derives per-ticket cycle time (first active row to
@@ -878,16 +966,16 @@ func ComputeLifecycleLatency(tickets [][]ledger.Row, now time.Time) LifecycleLat
 		}
 		// Determine final status to detect cancellation.
 		final := hist[len(hist)-1]
-		finalStatus, _ := final["status"].(string)
-		if finalStatus == "cancelled" {
+		finalStatus := ticketState(final)
+		if finalStatus == "cancelled" || finalStatus == "dropped" {
 			continue
 		}
 
 		// First entry into open or in_progress (cycle start).
 		var cycleStart time.Time
 		for _, r := range hist {
-			s, _ := r["status"].(string)
-			if s != "open" && s != "in_progress" {
+			s := ticketState(r)
+			if s != "open" && s != "in_progress" && s != "ready" && s != "doing" {
 				continue
 			}
 			ts, _ := r["ts"].(string)
@@ -911,8 +999,8 @@ func ComputeLifecycleLatency(tickets [][]ledger.Row, now time.Time) LifecycleLat
 		var latestReadyTS time.Time
 		var latestReadyFound bool
 		for _, r := range hist {
-			s, _ := r["status"].(string)
-			if s != "audit_ready" {
+			s := ticketState(r)
+			if s != "audit_ready" && s != "review" {
 				continue
 			}
 			ts, _ := r["ts"].(string)
@@ -935,7 +1023,7 @@ func ComputeLifecycleLatency(tickets [][]ledger.Row, now time.Time) LifecycleLat
 
 		// No audit-pass done yet. If currently pending audit (latest row is
 		// audit_ready), contribute to pending audit latency.
-		if finalStatus == "audit_ready" && latestReadyFound {
+		if (finalStatus == "audit_ready" || finalStatus == "review") && latestReadyFound {
 			auditHours = append(auditHours, now.Sub(latestReadyTS).Hours())
 		}
 	}
@@ -1005,8 +1093,8 @@ func computeStaleClaims(latest []ledger.Row, now time.Time) StaleClaims {
 	out := StaleClaims{}
 	horizon := now.Add(nearExpiringClaimWindow)
 	for _, r := range latest {
-		s, _ := r["status"].(string)
-		if s == "done" || s == "cancelled" {
+		s := ticketState(r)
+		if isTerminalState(s) {
 			continue
 		}
 		cu, _ := r["claim_until"].(string)
@@ -1017,8 +1105,8 @@ func computeStaleClaims(latest []ledger.Row, now time.Time) StaleClaims {
 		if err != nil {
 			continue
 		}
-		id, _ := r["ticket"].(string)
-		by, _ := r["claimed_by"].(string)
+		id := ticketID(r)
+		by := ticketOwner(r)
 		switch {
 		case until.Before(now):
 			out.Expired++
@@ -1089,23 +1177,63 @@ func normalizePriority(p string) string {
 	}
 }
 
+func buildCanonicalKanban(ticketRows []ledger.Row) Kanban {
+	latest := LatestTickets(ticketRows)
+	cols := []KanbanColumn{
+		{ID: "ready", Title: "Ready"},
+		{ID: "doing", Title: "Doing"},
+		{ID: "review", Title: "Review"},
+		{ID: "done", Title: "Done"},
+		{ID: "backlog", Title: "Backlog"},
+		{ID: "blocked", Title: "Blocked"},
+		{ID: "rework", Title: "Rework"},
+		{ID: "dropped", Title: "Dropped"},
+	}
+	byID := map[string]*KanbanColumn{}
+	for i := range cols {
+		byID[cols[i].ID] = &cols[i]
+	}
+	for _, r := range latest {
+		state := ticketState(r)
+		col := byID[state]
+		if col == nil {
+			col = byID["backlog"]
+		}
+		col.Tickets = append(col.Tickets, r)
+	}
+	for i := range cols {
+		sort.SliceStable(cols[i].Tickets, func(a, b int) bool {
+			ats, _ := cols[i].Tickets[a]["ts"].(string)
+			bts, _ := cols[i].Tickets[b]["ts"].(string)
+			return ats > bts
+		})
+	}
+	return Kanban{
+		Columns: cols,
+		Grid: [][]string{
+			{"ready", "doing", "review", "done"},
+			{"backlog", "blocked", "rework", "dropped"},
+		},
+	}
+}
+
 // BuildAuditQueue returns audit_ready tickets sorted by priority (P0..P3) then
 // age (older first). `latest` is the map of ticket id → latest row.
 func BuildAuditQueue(latest []ledger.Row, now time.Time) []AuditQueueItem {
 	out := make([]AuditQueueItem, 0)
 	for _, r := range latest {
-		s, _ := r["status"].(string)
-		if s != "audit_ready" {
+		s := ticketState(r)
+		if s != "audit_ready" && s != "review" {
 			continue
 		}
-		id, _ := r["ticket"].(string)
+		id := ticketID(r)
 		if id == "" {
 			continue
 		}
 		prio, _ := r["priority"].(string)
 		ts, _ := r["ts"].(string)
 		claimedBy, _ := r["claimed_by"].(string)
-		agent, _ := r["agent"].(string)
+		agent := ticketOwner(r)
 		ev, _ := r["evidence"].([]any)
 		hasEv := false
 		for _, e := range ev {
@@ -1116,7 +1244,7 @@ func BuildAuditQueue(latest []ledger.Row, now time.Time) []AuditQueueItem {
 		}
 		out = append(out, AuditQueueItem{
 			TicketID:     id,
-			Task:         stringField(r, "task"),
+			Task:         ticketTitle(r),
 			Priority:     normalizePriority(prio),
 			WaitingSince: ts,
 			ClaimedBy:    claimedBy,
@@ -1144,6 +1272,7 @@ func BuildAuditQueue(latest []ledger.Row, now time.Time) []AuditQueueItem {
 // Kanban mirrors the JSON shape of GET /api/projects/{id}/kanban.
 type Kanban struct {
 	Columns []KanbanColumn `json:"columns"`
+	Grid    [][]string     `json:"grid,omitempty"`
 }
 
 type KanbanColumn struct {
@@ -1152,45 +1281,80 @@ type KanbanColumn struct {
 	Tickets []ledger.Row `json:"tickets"`
 }
 
-// BuildKanban groups latest ticket rows into Plan/Implement/Verify/Complete.
+// BuildKanban projects legacy ticket/status rows into the same 4x2 control
+// grid used by canonical rows. It does not change the underlying ledger files;
+// it only adds a transient `state` field in the API response so the frontend can
+// render and filter consistently.
 func BuildKanban(ticketRows []ledger.Row) Kanban {
 	latest := LatestTickets(ticketRows)
-
-	plan := KanbanColumn{ID: "plan", Title: "Plan"}
-	impl := KanbanColumn{ID: "implement", Title: "Implement"}
-	verify := KanbanColumn{ID: "verify", Title: "Verify"}
-	complete := KanbanColumn{ID: "complete", Title: "Complete"}
+	cols := []KanbanColumn{
+		{ID: "ready", Title: "Ready"},
+		{ID: "doing", Title: "Doing"},
+		{ID: "review", Title: "Review"},
+		{ID: "done", Title: "Done"},
+		{ID: "backlog", Title: "Backlog"},
+		{ID: "blocked", Title: "Blocked"},
+		{ID: "rework", Title: "Rework"},
+		{ID: "dropped", Title: "Dropped"},
+	}
+	byID := map[string]*KanbanColumn{}
+	for i := range cols {
+		byID[cols[i].ID] = &cols[i]
+	}
 
 	for _, r := range latest {
 		s, _ := r["status"].(string)
-		role, _ := r["role"].(string)
-		switch s {
-		case "done", "cancelled":
-			complete.Tickets = append(complete.Tickets, r)
-		case "audit_ready":
-			verify.Tickets = append(verify.Tickets, r)
-		case "in_progress", "blocked", "changes_requested":
-			if role == "plan" {
-				plan.Tickets = append(plan.Tickets, r)
-			} else if role == "audit" {
-				verify.Tickets = append(verify.Tickets, r)
-			} else {
-				impl.Tickets = append(impl.Tickets, r)
-			}
-		case "open":
-			plan.Tickets = append(plan.Tickets, r)
-		default:
-			// Unknown status defaults to plan so nothing disappears.
-			plan.Tickets = append(plan.Tickets, r)
+		state := legacyStatusToControlState(s)
+		projected := cloneRow(r)
+		projected["state"] = state
+		col := byID[state]
+		if col == nil {
+			col = byID["backlog"]
 		}
+		col.Tickets = append(col.Tickets, projected)
 	}
 
-	for _, col := range []*KanbanColumn{&plan, &impl, &verify, &complete} {
-		sort.SliceStable(col.Tickets, func(i, j int) bool {
-			a, _ := col.Tickets[i]["ts"].(string)
-			b, _ := col.Tickets[j]["ts"].(string)
-			return a > b
+	for i := range cols {
+		sort.SliceStable(cols[i].Tickets, func(a, b int) bool {
+			ats, _ := cols[i].Tickets[a]["ts"].(string)
+			bts, _ := cols[i].Tickets[b]["ts"].(string)
+			return ats > bts
 		})
 	}
-	return Kanban{Columns: []KanbanColumn{plan, impl, verify, complete}}
+	return Kanban{
+		Columns: cols,
+		Grid: [][]string{
+			{"ready", "doing", "review", "done"},
+			{"backlog", "blocked", "rework", "dropped"},
+		},
+	}
+}
+
+func legacyStatusToControlState(status string) string {
+	switch status {
+	case "open":
+		return "ready"
+	case "in_progress":
+		return "doing"
+	case "blocked":
+		return "blocked"
+	case "audit_ready":
+		return "review"
+	case "changes_requested":
+		return "rework"
+	case "done":
+		return "done"
+	case "cancelled":
+		return "dropped"
+	default:
+		return "backlog"
+	}
+}
+
+func cloneRow(row ledger.Row) ledger.Row {
+	out := make(ledger.Row, len(row)+1)
+	for k, v := range row {
+		out[k] = v
+	}
+	return out
 }

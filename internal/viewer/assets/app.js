@@ -725,7 +725,7 @@ function kanbanCard(t) {
 }
 
 function ticketID(t) { return (t && (t.ticket || t.id)) || ""; }
-function ticketState(t) { return (t && (t.status || t.state)) || ""; }
+function ticketState(t) { return (t && (t.state || t.status)) || ""; }
 function ticketTitle(t) { return (t && (t.task || t.title)) || ""; }
 
 /* Audit queue */

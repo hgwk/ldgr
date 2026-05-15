@@ -3,6 +3,7 @@ package legacy
 import (
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hgwk/ldgr/internal/ledger"
 )
@@ -28,7 +29,7 @@ func NormalizeTickets(in []ledger.Row, parents []string, now string) ([]ledger.R
 		r["n"] = want
 		// ts ISO + non-decreasing
 		ts, _ := r["ts"].(string)
-		if !isoRe.MatchString(ts) || (prevTS != "" && ts < prevTS) {
+		if !isoRe.MatchString(ts) || (prevTS != "" && legacyCompareTS(ts, prevTS) < 0) {
 			r["ts"] = now
 			counts.TSReplaced++
 			warns = append(warns, "ts replaced on legacy ticket row")
@@ -74,7 +75,7 @@ func NormalizeWorklog(in []ledger.Row, now string) ([]ledger.Row, Counts, []stri
 		}
 		r["n"] = want
 		ts, _ := r["ts"].(string)
-		if !isoRe.MatchString(ts) || (prevTS != "" && ts < prevTS) {
+		if !isoRe.MatchString(ts) || (prevTS != "" && legacyCompareTS(ts, prevTS) < 0) {
 			r["ts"] = now
 			counts.TSReplaced++
 			warns = append(warns, "ts replaced on legacy worklog row")
@@ -138,6 +139,27 @@ func setOf(in []string) map[string]struct{} {
 		out[v] = struct{}{}
 	}
 	return out
+}
+
+func legacyCompareTS(a, b string) int {
+	at, aerr := time.Parse(time.RFC3339Nano, a)
+	bt, berr := time.Parse(time.RFC3339Nano, b)
+	if aerr == nil && berr == nil {
+		if at.Before(bt) {
+			return -1
+		}
+		if at.After(bt) {
+			return 1
+		}
+		return 0
+	}
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 func copyRow(in ledger.Row) ledger.Row {

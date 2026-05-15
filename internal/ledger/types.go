@@ -72,6 +72,77 @@ var PriorityEnum = map[string]struct{}{
 	"P3": {},
 }
 
+// Canonical v1 field sets and enums: id/state/type/title/event for tickets
+// and actor/title/summary for worklogs.
+var (
+	CanonicalTicketRequired = []string{
+		"n", "ts", "id", "parent", "type", "state", "area", "priority",
+		"title", "owner", "blocked_by", "acceptance", "evidence", "event",
+	}
+	CanonicalTicketNonEmpty = []string{
+		"id", "parent", "type", "state", "area", "priority", "title", "owner",
+	}
+	CanonicalWorklogRequired = []string{
+		"n", "ts", "ticket", "actor", "title", "summary", "paths", "commands", "notes",
+	}
+	CanonicalWorklogNonEmpty = []string{
+		"ticket", "actor", "title", "summary",
+	}
+	CanonicalEventRequired = []string{
+		"actor", "role", "summary", "notes",
+	}
+	CanonicalEventNonEmpty = []string{
+		"actor", "role", "summary",
+	}
+)
+
+var CanonicalTypeEnum = map[string]struct{}{
+	"epic":  {},
+	"plan":  {},
+	"issue": {},
+	"task":  {},
+	"audit": {},
+	"ops":   {},
+}
+
+var CanonicalStateEnum = map[string]struct{}{
+	"backlog": {},
+	"ready":   {},
+	"doing":   {},
+	"blocked": {},
+	"review":  {},
+	"rework":  {},
+	"done":    {},
+	"dropped": {},
+}
+
+var CanonicalAreaEnum = map[string]struct{}{
+	"frontend": {},
+	"backend":  {},
+	"runtime":  {},
+	"docs":     {},
+	"infra":    {},
+	"test":     {},
+	"security": {},
+	"release":  {},
+	"ops":      {},
+}
+
+var CanonicalEventRoleEnum = map[string]struct{}{
+	"planner":     {},
+	"implementer": {},
+	"auditor":     {},
+	"operator":    {},
+	"reviewer":    {},
+}
+
+var CanonicalEventResultEnum = map[string]struct{}{
+	"pass":              {},
+	"changes_requested": {},
+	"cancelled":         {},
+	"corrected":         {},
+}
+
 // Goal mirrors ledger/goal.json. unknown fields are preserved through Row,
 // but Goal exposes the documented shape for command convenience.
 type Goal struct {

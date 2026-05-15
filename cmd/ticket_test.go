@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hgwk/ldgr/internal/config"
 	"github.com/hgwk/ldgr/internal/ledger"
 	"github.com/hgwk/ldgr/internal/registry"
 )
@@ -22,6 +23,21 @@ func mustInit(t *testing.T) (target string, store *registry.Store) {
 		t.Fatalf("init: %v", err)
 	}
 	return
+}
+
+func mustInitCanonical(t *testing.T) string {
+	t.Helper()
+	target, _ := mustInit(t)
+	cfgPath := filepath.Join(target, "ledger", "config.json")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	cfg.SchemaVersion = 1
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	return target
 }
 
 func TestTicketAdd_AppendsRow(t *testing.T) {
@@ -313,9 +329,9 @@ func TestTicketEvent_PrintsGuidanceToStderr(t *testing.T) {
 	}
 
 	// Second transition: in_progress → audit_ready
-	ev2 := `{"ticket":"G-1","status":"audit_ready","evidence":["go test ./..."]}`
+	evReview := `{"ticket":"G-1","status":"audit_ready","evidence":["go test ./..."]}`
 	var stdout, stderr bytes.Buffer
-	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(ev2), &stdout, &stderr); code != 0 {
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(evReview), &stdout, &stderr); code != 0 {
 		t.Fatalf("event failed: %s", stderr.String())
 	}
 	// stdout is still JSON.
@@ -462,6 +478,31 @@ func TestTicketReady_RequiresEvidence(t *testing.T) {
 	}
 }
 
+func TestTicketReadyCanonical_AppendsReviewRow(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"RDY-CANON","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"x","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"RDY-CANON","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var stderr bytes.Buffer
+	if code := RunTicketCLI([]string{"ready", "--target", target, "--ticket", "RDY-CANON", "--evidence", "go test ./..."}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("canonical v1 ticket ready failed: %s", stderr.String())
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	last := rows[len(rows)-1]
+	if last["state"] != "review" {
+		t.Fatalf("expected state=review, got %+v", last)
+	}
+	event, _ := last["event"].(map[string]any)
+	if event["role"] != "implementer" {
+		t.Fatalf("expected implementer event, got %+v", event)
+	}
+	if _, ok := last["status"]; ok {
+		t.Fatalf("canonical v1 ready row should not include v1 status: %+v", last)
+	}
+}
+
 func TestTicketAdd_DefaultsKindAndPriority(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
@@ -501,5 +542,62 @@ func TestTicketAdd_KeepsExplicitKindPriority(t *testing.T) {
 	last := rows[len(rows)-1]
 	if last["kind"] != "issue" || last["priority"] != "P0" {
 		t.Fatalf("explicit values not preserved: %v / %v", last["kind"], last["priority"])
+	}
+}
+
+func TestTicketAddCanonical_AppendsSchemaCanonicalRow(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	in := `{"id":"CANON-1","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build canonical v1 writer","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	var stderr bytes.Buffer
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(in), &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("canonical v1 add failed: %s", stderr.String())
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	if len(rows) != 1 {
+		t.Fatalf("expected one row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row["id"] != "CANON-1" || row["owner"] != "codex" || row["state"] != "ready" {
+		t.Fatalf("unexpected canonical v1 row: %+v", row)
+	}
+	event, _ := row["event"].(map[string]any)
+	if event["actor"] != "codex" {
+		t.Fatalf("event.actor should default from agent: %+v", event)
+	}
+}
+
+func TestTicketEventCanonical_AuditPassDone(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"CANON-PASS","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"CANON-PASS","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"CANON-PASS","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	reviewN := int(rows[len(rows)-1]["n"].(float64))
+	pass := fmt.Sprintf(`{"id":"CANON-PASS","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	var stderr bytes.Buffer
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("canonical v1 audit pass failed: %s", stderr.String())
+	}
+	rows, _ = ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	if rows[len(rows)-1]["state"] != "done" {
+		t.Fatalf("expected done row, got %+v", rows[len(rows)-1])
+	}
+}
+
+func TestTicketEventCanonical_RejectsDirectDone(t *testing.T) {
+	target := mustInitCanonical(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"CANON-BAD","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	var stderr bytes.Buffer
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"CANON-BAD","state":"done","event":{"role":"implementer","summary":"done","notes":""}}`), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected direct done rejection")
+	}
+	if !strings.Contains(stderr.String(), "ready -> done") {
+		t.Fatalf("stderr should name rejected edge, got: %s", stderr.String())
 	}
 }
