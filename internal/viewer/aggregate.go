@@ -352,16 +352,39 @@ func stringField(r ledger.Row, k string) string {
 
 // Dashboard mirrors the JSON shape of GET /api/projects/{id}/dashboard.
 type Dashboard struct {
-	Progress    Progress         `json:"progress"`
-	Parents     []ParentProgress `json:"parents"`
-	Audit       AuditPipeline    `json:"audit"`
-	Health      DeliveryHealth   `json:"health"`
-	Recent      []RecentItem     `json:"recent"`
-	Priority    PriorityCounts   `json:"priority"`
-	Kind        []KindCount      `json:"kind"`
-	StaleClaims StaleClaims      `json:"stale_claims"`
-	Lifecycle   LifecycleLatency `json:"lifecycle"`
+	Progress     Progress         `json:"progress"`
+	Parents      []ParentProgress `json:"parents"`
+	Audit        AuditPipeline    `json:"audit"`
+	Health       DeliveryHealth   `json:"health"`
+	Recent       []RecentItem     `json:"recent"`
+	Priority     PriorityCounts   `json:"priority"`
+	Kind         []KindCount      `json:"kind"`
+	StaleClaims  StaleClaims      `json:"stale_claims"`
+	Lifecycle    LifecycleLatency `json:"lifecycle"`
+	ActiveAgents ActiveAgents     `json:"active_agents"`
 }
+
+// ActiveAgent is one entry in the active-agents widget — a single actor's
+// recent activity across ticket and worklog rows.
+type ActiveAgent struct {
+	Agent  string `json:"agent"`
+	Role   string `json:"role,omitempty"`
+	Rows   int    `json:"rows"`
+	Latest string `json:"latest"`
+}
+
+// ActiveAgents aggregates recent agent activity within a 24h window.
+type ActiveAgents struct {
+	Agents       []ActiveAgent `json:"agents"`
+	UnknownCount int           `json:"unknown_count"`
+	WindowHours  int           `json:"window_hours"`
+}
+
+// activeAgentsWindow is the lookback window for the active-agents widget.
+const activeAgentsWindow = 24 * time.Hour
+
+// activeAgentsMax caps the displayed list to avoid clutter.
+const activeAgentsMax = 8
 
 // LifecycleLatency summarizes per-ticket cycle time and audit latency.
 // Hours are emitted raw; the frontend rounds for display.
@@ -685,18 +708,112 @@ func BuildDashboard(ticketRows, worklogRows []ledger.Row, now time.Time) Dashboa
 
 	stale := computeStaleClaims(latest, now)
 	lifecycle := ComputeLifecycleLatency(perTicketHistory(ticketRows), now)
+	agents := computeActiveAgents(ticketRows, worklogRows, now)
 
 	return Dashboard{
-		Progress:    Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
-		Parents:     parents,
-		Audit:       AuditPipeline{AuditReady: auditReady, ChangesRequested: changesReq, WeakDone: weakDone},
-		Health:      DeliveryHealth{ClosedWithoutWorklog: closed, OrphanWorklog: orphan, Invalidated: invalidated, MissingEvidence: missingEv},
-		Recent:      recent,
-		Priority:    pc,
-		Kind:        kinds,
-		StaleClaims: stale,
-		Lifecycle:   lifecycle,
+		Progress:     Progress{Done: done, Active: active, Cancelled: cancelled, Percent: percent},
+		Parents:      parents,
+		Audit:        AuditPipeline{AuditReady: auditReady, ChangesRequested: changesReq, WeakDone: weakDone},
+		Health:       DeliveryHealth{ClosedWithoutWorklog: closed, OrphanWorklog: orphan, Invalidated: invalidated, MissingEvidence: missingEv},
+		Recent:       recent,
+		Priority:     pc,
+		Kind:         kinds,
+		StaleClaims:  stale,
+		Lifecycle:    lifecycle,
+		ActiveAgents: agents,
 	}
+}
+
+// computeActiveAgents aggregates ticket and worklog rows from the trailing
+// 24h window, grouped by actor identity. Precedence per row:
+// claimed_by → agent → actor. Empty/missing values land in the unknown bucket.
+// Excludes invalidate-companion rows and invalidated rows.
+func computeActiveAgents(ticketRows, worklogRows []ledger.Row, now time.Time) ActiveAgents {
+	out := ActiveAgents{WindowHours: int(activeAgentsWindow / time.Hour)}
+	cutoff := now.Add(-activeAgentsWindow)
+
+	type agg struct {
+		rows   int
+		latest time.Time
+		roles  map[string]int
+	}
+	byAgent := map[string]*agg{}
+
+	visit := func(rows []ledger.Row) {
+		invalid := InvalidatedNs(rows)
+		for _, r := range rows {
+			if _, isCompanion := r["invalidates_n"]; isCompanion {
+				continue
+			}
+			n, _ := r["n"].(float64)
+			if _, isInvalid := invalid[int(n)]; isInvalid {
+				continue
+			}
+			ts, _ := r["ts"].(string)
+			t := parseTS(ts)
+			if t.IsZero() || t.Before(cutoff) {
+				continue
+			}
+			agent := stringField(r, "claimed_by")
+			if agent == "" {
+				agent = stringField(r, "agent")
+			}
+			if agent == "" {
+				agent = stringField(r, "actor")
+			}
+			if agent == "" {
+				out.UnknownCount++
+				continue
+			}
+			a, ok := byAgent[agent]
+			if !ok {
+				a = &agg{roles: map[string]int{}}
+				byAgent[agent] = a
+			}
+			a.rows++
+			if t.After(a.latest) {
+				a.latest = t
+			}
+			if role := stringField(r, "role"); role != "" {
+				a.roles[role]++
+			}
+		}
+	}
+	visit(ticketRows)
+	visit(worklogRows)
+
+	list := make([]ActiveAgent, 0, len(byAgent))
+	for name, a := range byAgent {
+		// Pick most common role; on tie, lexicographically smallest for determinism.
+		var role string
+		var best int
+		for r, c := range a.roles {
+			if c > best || (c == best && (role == "" || r < role)) {
+				role = r
+				best = c
+			}
+		}
+		list = append(list, ActiveAgent{
+			Agent:  name,
+			Role:   role,
+			Rows:   a.rows,
+			Latest: a.latest.UTC().Format(time.RFC3339),
+		})
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		if list[i].Rows != list[j].Rows {
+			return list[i].Rows > list[j].Rows
+		}
+		if list[i].Latest != list[j].Latest {
+			return list[i].Latest > list[j].Latest
+		}
+		return list[i].Agent < list[j].Agent
+	})
+	if len(list) > activeAgentsMax {
+		list = list[:activeAgentsMax]
+	}
+	out.Agents = list
+	return out
 }
 
 // perTicketHistory groups ticket rows by ticket id with invalidated rows and

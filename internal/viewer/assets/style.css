@@ -493,6 +493,60 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 .stale-claims-samples a { text-decoration: none; }
 .stale-claims-samples a:hover { text-decoration: underline; }
 
+/* Active agents dashboard tile */
+.metric.active-agents.calm .value { opacity: 0.4; }
+.metric.active-agents.calm .delta { opacity: 0.6; }
+.active-agents-list {
+  list-style: none;
+  margin: var(--space-2) 0 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.active-agents-list li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Verify status dashboard tile */
+.metric.verify-status .value { font-variant-numeric: tabular-nums; }
+.metric.verify-status.calm .value { opacity: 0.4; }
+.metric.verify-status.calm .delta { opacity: 0.6; }
+.metric.verify-status.fails .value { color: var(--status-blocked); }
+.verify-toggle {
+  display: inline-flex; gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+}
+.verify-toggle button {
+  font: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: inherit;
+  padding: 1px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.verify-toggle button.active {
+  background: var(--border);
+}
+.verify-status-head {
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.verify-codes {
+  list-style: none;
+  margin: var(--space-2) 0 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.verify-codes li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Drawer */
 .drawer-head {
   display: flex; align-items: baseline; gap: var(--space-3);

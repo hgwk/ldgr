@@ -341,6 +341,33 @@ async function renderDashboard(root, background) {
   ));
   root.appendChild(pBand);
 
+  // Active agents widget (24h window).
+  const aa = d.active_agents || { agents: [], unknown_count: 0, window_hours: 24 };
+  const aaAgents = aa.agents || [];
+  const aaBand = el("div", { class: "metric-band" });
+  const aaTile = el("div", { class: "metric active-agents" + (aaAgents.length === 0 ? " calm" : "") });
+  aaTile.appendChild(el("div", { class: "label", text: "Active agents · last " + (aa.window_hours || 24) + "h" }));
+  aaTile.appendChild(el("div", { class: "value", text: String(aaAgents.length) }));
+  if (aaAgents.length === 0) {
+    aaTile.appendChild(el("div", { class: "delta", text: aa.unknown_count > 0 ? (aa.unknown_count + " unknown rows") : "no recent activity" }));
+  } else {
+    const totalRows = aaAgents.reduce((s, a) => s + (a.rows || 0), 0);
+    let sub = totalRows + " rows";
+    if (aa.unknown_count > 0) sub += " · " + aa.unknown_count + " unknown";
+    aaTile.appendChild(el("div", { class: "delta", text: sub }));
+    const list = el("ul", { class: "active-agents-list" });
+    for (const a of aaAgents) {
+      const li = el("li");
+      li.appendChild(el("span", { class: "mono", text: a.agent }));
+      const tail = " · " + (a.rows || 0) + (a.role ? " · " + a.role : "");
+      li.appendChild(document.createTextNode(tail));
+      list.appendChild(li);
+    }
+    aaTile.appendChild(list);
+  }
+  aaBand.appendChild(aaTile);
+  root.appendChild(aaBand);
+
   // Parents table.
   root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: "Parent completion" })));
   const parents = d.parents || [];
