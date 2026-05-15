@@ -4,8 +4,13 @@ const POLL_MS = 5000;
 let state = {
   projectId: null,
   page: "dashboard",
-  kanbanFilter: { priority: "", kind: "" },
+  kanbanFilter: { priority: "", kind: "", status: "", parent: "", agent: "", blocked: "", evidence: "" },
   kanbanSort: "ts",
+  treeFilter: { parent: "", kind: "", priority: "", status: "" },
+  worklogFilter: { q: "", agent: "" },
+  worklogSort: "newest",
+  pageSig: {},
+  projectsSig: "",
 };
 let pollTimer = null;
 
@@ -44,12 +49,39 @@ function setError(container, err) {
   container.innerHTML = "";
   container.appendChild(el("div", { class: "state-error", text: "API error: " + err.message }));
 }
+function uniqueSorted(items) {
+  return [...new Set(items.filter(Boolean).map(String))].sort();
+}
+function selectControl(values, current, label, onChange) {
+  const sel = el("select", { onchange: (e) => onChange(e.target.value) });
+  for (const item of values) {
+    const value = typeof item === "string" ? item : item.value;
+    const text = typeof item === "string" ? item : item.text;
+    const opt = el("option", { value, text: value ? text : label });
+    if (value === current) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  return sel;
+}
+function textControl(value, placeholder, onChange) {
+  return el("input", { type: "search", value, placeholder, oninput: (e) => onChange(e.target.value) });
+}
+function shouldSkipRender(page, data, background) {
+  const sig = JSON.stringify(data);
+  if (background && state.pageSig[page] === sig) return true;
+  state.pageSig[page] = sig;
+  return false;
+}
 
 async function loadProjects(opts) {
   const background = Boolean(opts && opts.background);
   try {
     const projects = await getJSON("/api/projects");
-    renderProjectList(projects);
+    const sig = JSON.stringify(projects);
+    if (!background || sig !== state.projectsSig) {
+      state.projectsSig = sig;
+      renderProjectList(projects);
+    }
     if (!state.projectId && projects.length > 0) {
       selectProject(projects[0].project_id);
     } else if (state.projectId) {
@@ -107,9 +139,21 @@ function syncURL() {
   const params = new URLSearchParams();
   if (state.projectId) params.set("project", state.projectId);
   if (state.page && state.page !== "dashboard") params.set("page", state.page);
-  if (state.kanbanFilter.priority) params.set("priority", state.kanbanFilter.priority);
-  if (state.kanbanFilter.kind) params.set("kind", state.kanbanFilter.kind);
-  if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
+	  if (state.kanbanFilter.priority) params.set("priority", state.kanbanFilter.priority);
+	  if (state.kanbanFilter.kind) params.set("kind", state.kanbanFilter.kind);
+	  if (state.kanbanFilter.status) params.set("status", state.kanbanFilter.status);
+	  if (state.kanbanFilter.parent) params.set("parent", state.kanbanFilter.parent);
+	  if (state.kanbanFilter.agent) params.set("agent", state.kanbanFilter.agent);
+	  if (state.kanbanFilter.blocked) params.set("blocked", state.kanbanFilter.blocked);
+	  if (state.kanbanFilter.evidence) params.set("evidence", state.kanbanFilter.evidence);
+	  if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
+	  if (state.treeFilter.parent) params.set("tree_parent", state.treeFilter.parent);
+	  if (state.treeFilter.kind) params.set("tree_kind", state.treeFilter.kind);
+	  if (state.treeFilter.priority) params.set("tree_priority", state.treeFilter.priority);
+	  if (state.treeFilter.status) params.set("tree_status", state.treeFilter.status);
+	  if (state.worklogFilter.q) params.set("worklog_q", state.worklogFilter.q);
+	  if (state.worklogFilter.agent) params.set("worklog_agent", state.worklogFilter.agent);
+	  if (state.worklogSort !== "newest") params.set("worklog_sort", state.worklogSort);
   const qs = params.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
 }
@@ -137,11 +181,11 @@ async function loadPage(opts) {
   if (!background) setLoading(page);
   try {
     switch (state.page) {
-      case "dashboard": await renderDashboard(page); break;
-      case "kanban":    await renderKanban(page); break;
-      case "tree":      await renderTree(page); break;
-      case "worklog":   await renderWorklog(page); break;
-      case "insights":  await renderInsights(page); break;
+      case "dashboard": await renderDashboard(page, background); break;
+      case "kanban":    await renderKanban(page, background); break;
+      case "tree":      await renderTree(page, background); break;
+      case "worklog":   await renderWorklog(page, background); break;
+      case "insights":  await renderInsights(page, background); break;
       default:          page.innerHTML = ""; page.appendChild(el("div", { class: "state-empty", text: "Unknown page." }));
     }
   } catch (e) {
@@ -150,8 +194,9 @@ async function loadPage(opts) {
 }
 
 /* Dashboard */
-async function renderDashboard(root) {
+async function renderDashboard(root, background) {
   const d = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/dashboard");
+  if (shouldSkipRender("dashboard", d, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Dashboard" }));
 
@@ -258,32 +303,34 @@ async function renderDashboard(root) {
 }
 
 /* Kanban */
-async function renderKanban(root) {
+async function renderKanban(root, background) {
   const k = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/kanban");
+  if (shouldSkipRender("kanban", k, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Kanban" }));
 
+  const allTickets = [];
+  for (const col of (k.columns || [])) for (const t of (col.tickets || [])) allTickets.push(t);
+  const parents = uniqueSorted(allTickets.map((t) => t.parent_ticket));
+  const agents = uniqueSorted(allTickets.map((t) => t.claimed_by || t.agent));
+
   // Filter bar
   const bar = el("div", { class: "kanban-bar" });
-  const prioSel = el("select", { onchange: (e) => { state.kanbanFilter.priority = e.target.value; syncURL(); loadPage(); } });
-  for (const v of ["", "P0", "P1", "P2", "P3"]) {
-    const opt = el("option", { value: v, text: v ? "Priority " + v : "All priorities" });
-    if (v === state.kanbanFilter.priority) opt.selected = true;
-    prioSel.appendChild(opt);
-  }
-  const kindSel = el("select", { onchange: (e) => { state.kanbanFilter.kind = e.target.value; syncURL(); loadPage(); } });
-  for (const v of ["", "plan", "issue", "task", "audit", "ops"]) {
-    const opt = el("option", { value: v, text: v ? "Kind " + v : "All kinds" });
-    if (v === state.kanbanFilter.kind) opt.selected = true;
-    kindSel.appendChild(opt);
-  }
-  const sortSel = el("select", { onchange: (e) => { state.kanbanSort = e.target.value; syncURL(); loadPage(); } });
-  for (const v of ["ts", "priority"]) {
-    const opt = el("option", { value: v, text: "Sort by " + v });
-    if (v === state.kanbanSort) opt.selected = true;
-    sortSel.appendChild(opt);
-  }
-  bar.appendChild(prioSel); bar.appendChild(kindSel); bar.appendChild(sortSel);
+  bar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.kanbanFilter.priority, "All priorities", (v) => { state.kanbanFilter.priority = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", "plan", "issue", "task", "audit", "ops"].map(v => ({ value: v, text: v ? "Kind " + v : "" })), state.kanbanFilter.kind, "All kinds", (v) => { state.kanbanFilter.kind = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"].map(v => ({ value: v, text: v ? "Status " + v : "" })), state.kanbanFilter.status, "All statuses", (v) => { state.kanbanFilter.status = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...parents], state.kanbanFilter.parent, "All parents", (v) => { state.kanbanFilter.parent = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...agents], state.kanbanFilter.agent, "All agents", (v) => { state.kanbanFilter.agent = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{value:"",text:""}, {value:"yes",text:"Blocked only"}], state.kanbanFilter.blocked, "Any blocker", (v) => { state.kanbanFilter.blocked = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{value:"",text:""}, {value:"present",text:"Evidence present"}, {value:"missing",text:"Evidence missing"}], state.kanbanFilter.evidence, "Any evidence", (v) => { state.kanbanFilter.evidence = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([
+    { value: "ts", text: "Sort by updated" },
+    { value: "oldest", text: "Sort by oldest" },
+    { value: "priority", text: "Sort by priority" },
+    { value: "parent", text: "Sort by parent" },
+    { value: "blocked", text: "Sort blocked first" },
+    { value: "missing_evidence", text: "Sort missing evidence" },
+  ], state.kanbanSort, "Sort by updated", (v) => { state.kanbanSort = v; syncURL(); loadPage(); }));
   root.appendChild(bar);
 
   const cols = k.columns || [];
@@ -299,14 +346,28 @@ async function renderKanban(root) {
     head.appendChild(el("span", { class: "kanban-col-title", text: col.title }));
 
     let tickets = (col.tickets || []).filter((t) => {
-      if (state.kanbanFilter.priority && (t.priority || "") !== state.kanbanFilter.priority) return false;
-      if (state.kanbanFilter.kind && (t.kind || "") !== state.kanbanFilter.kind) return false;
-      return true;
-    });
-    if (state.kanbanSort === "priority") {
-      const rank = { "P0": 0, "P1": 1, "P2": 2, "P3": 3 };
-      tickets = tickets.slice().sort((a, b) => (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9));
-    }
+	      if (state.kanbanFilter.priority && (t.priority || "") !== state.kanbanFilter.priority) return false;
+	      if (state.kanbanFilter.kind && (t.kind || "") !== state.kanbanFilter.kind) return false;
+	      if (state.kanbanFilter.status && (t.status || "") !== state.kanbanFilter.status) return false;
+	      if (state.kanbanFilter.parent && (t.parent_ticket || "") !== state.kanbanFilter.parent) return false;
+	      if (state.kanbanFilter.agent && (t.claimed_by || t.agent || "") !== state.kanbanFilter.agent) return false;
+	      if (state.kanbanFilter.blocked === "yes" && !(t.blocked_by || []).some(Boolean)) return false;
+	      if (state.kanbanFilter.evidence === "present" && !(t.evidence || []).some(Boolean)) return false;
+	      if (state.kanbanFilter.evidence === "missing" && (t.evidence || []).some(Boolean)) return false;
+	      return true;
+	    });
+	    const rank = { "P0": 0, "P1": 1, "P2": 2, "P3": 3 };
+	    if (state.kanbanSort === "priority") {
+	      tickets = tickets.slice().sort((a, b) => (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9));
+	    } else if (state.kanbanSort === "oldest") {
+	      tickets = tickets.slice().sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
+	    } else if (state.kanbanSort === "parent") {
+	      tickets = tickets.slice().sort((a, b) => (a.parent_ticket || "").localeCompare(b.parent_ticket || ""));
+	    } else if (state.kanbanSort === "blocked") {
+	      tickets = tickets.slice().sort((a, b) => Number((b.blocked_by || []).some(Boolean)) - Number((a.blocked_by || []).some(Boolean)));
+	    } else if (state.kanbanSort === "missing_evidence") {
+	      tickets = tickets.slice().sort((a, b) => Number(!(b.evidence || []).some(Boolean)) - Number(!(a.evidence || []).some(Boolean)));
+	    }
 
     head.appendChild(el("span", { class: "kanban-col-count", text: String(tickets.length) }));
     colEl.appendChild(head);
@@ -358,7 +419,8 @@ async function openDrawer(ticketId) {
     const data = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/tickets/" + encodeURIComponent(ticketId));
     body.innerHTML = "";
     body.appendChild(renderDrawerHeader(data));
-    body.appendChild(renderDrawerSummary(data.latest || {}, data.invalidated_via));
+    body.appendChild(renderDrawerSummary(data.latest || {}, data.invalidated_via, data.history || []));
+    body.appendChild(renderDrawerDetails(data.latest || {}, data.history || []));
     body.appendChild(renderDrawerHistory(data.history || []));
     body.appendChild(renderDrawerWorklogs(data.worklog || []));
     body.appendChild(renderDrawerGuidance(ticketId));
@@ -376,16 +438,18 @@ function renderDrawerHeader(d) {
   return head;
 }
 
-function renderDrawerSummary(latest, invalidatedVia) {
+function renderDrawerSummary(latest, invalidatedVia, history) {
   const wrap = el("div", { class: "drawer-summary" });
   if (latest.task) wrap.appendChild(el("div", { class: "drawer-task", text: latest.task }));
   const rows = [
-    ["parent",     latest.parent_ticket],
-    ["category",   latest.category],
-    ["branch",     latest.branch],
-    ["claimed_by", latest.claimed_by],
-    ["agent",      latest.agent],
-    ["role",       latest.role],
+    ["parent",      latest.parent_ticket],
+    ["category",    latest.category],
+    ["branch",      latest.branch],
+    ["claimed_by",  latest.claimed_by],
+    ["claim_until", latest.claim_until ? fmtTS(latest.claim_until) : ""],
+    ["handoff_to",  latest.handoff_to],
+    ["agent",       latest.agent],
+    ["role",        latest.role],
   ];
   const dl = el("dl", { class: "drawer-meta" });
   for (const [k, v] of rows) {
@@ -400,11 +464,135 @@ function renderDrawerSummary(latest, invalidatedVia) {
     for (const b of blocked) dd.appendChild(el("span", { class: "badge badge-warn", text: b }));
     dl.appendChild(dd);
   }
+  if (latest.reviewed_n != null) {
+    dl.appendChild(el("dt", { text: "reviewed_n" }));
+    const dd = el("dd");
+    const targetN = Number(latest.reviewed_n);
+    const inHistory = Array.isArray(history) && history.some((r) => Number(r && r.n) === targetN);
+    if (inHistory) {
+      const a = el("a", {
+        href: "#history-n-" + targetN,
+        class: "mono drawer-backlink",
+        text: "n=" + targetN,
+        onclick: (ev) => { ev.preventDefault(); highlightHistoryRow(targetN); },
+      });
+      dd.appendChild(a);
+    } else {
+      dd.appendChild(el("span", { class: "mono", text: "n=" + targetN }));
+    }
+    dl.appendChild(dd);
+  }
   if (dl.childNodes.length > 0) wrap.appendChild(dl);
   if (invalidatedVia) {
     wrap.appendChild(el("div", { class: "state-error", text: "This row is invalidated by n=" + invalidatedVia }));
   }
   return wrap;
+}
+
+/* Parse provenance one-liner out of a notes string.
+   Recognized keys: archived, borrow, reference, new, not_borrowed.
+   Returns { markers: [{key, value}], rest: "leftover notes text" }. */
+function parseProvenance(notes) {
+  const out = { markers: [], rest: "" };
+  if (!notes || typeof notes !== "string") return out;
+  const keys = ["archived", "borrow", "reference", "new", "not_borrowed"];
+  // Split on ';' and pull out segments that match `key=...`.
+  const segments = notes.split(";").map((s) => s.trim()).filter(Boolean);
+  const leftover = [];
+  for (const seg of segments) {
+    const eq = seg.indexOf("=");
+    if (eq > 0) {
+      const k = seg.slice(0, eq).trim();
+      const v = seg.slice(eq + 1).trim();
+      if (keys.includes(k)) {
+        out.markers.push({ key: k, value: v });
+        continue;
+      }
+    }
+    leftover.push(seg);
+  }
+  out.rest = leftover.join("; ");
+  return out;
+}
+
+function renderDrawerDetails(latest, history) {
+  const wrap = el("div", { class: "drawer-details" });
+
+  // notes (with provenance parsing)
+  if (latest.notes) {
+    const prov = parseProvenance(latest.notes);
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "notes" }));
+    if (prov.markers.length > 0) {
+      const row = el("div", { class: "provenance-row" });
+      for (const m of prov.markers) {
+        const cls = m.key === "not_borrowed" ? "badge badge-warn" : "badge";
+        row.appendChild(el("span", { class: cls + " provenance-marker", text: m.key + "=" + m.value }));
+      }
+      section.appendChild(row);
+    }
+    if (prov.rest) {
+      section.appendChild(el("div", { class: "drawer-prose", text: prov.rest }));
+    } else if (prov.markers.length === 0) {
+      section.appendChild(el("div", { class: "drawer-prose", text: latest.notes }));
+    }
+    wrap.appendChild(section);
+  }
+
+  // decision
+  if (latest.decision) {
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "decision" }));
+    section.appendChild(el("div", { class: "drawer-prose", text: latest.decision }));
+    wrap.appendChild(section);
+  }
+
+  // audit_notes
+  if (latest.audit_notes) {
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "audit_notes" }));
+    section.appendChild(el("div", { class: "drawer-prose", text: latest.audit_notes }));
+    wrap.appendChild(section);
+  }
+
+  // acceptance (array of strings)
+  const acc = Array.isArray(latest.acceptance) ? latest.acceptance.filter((s) => s) : [];
+  if (acc.length > 0) {
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "acceptance" }));
+    const ul = el("ul", { class: "drawer-list" });
+    for (const item of acc) ul.appendChild(el("li", { text: String(item) }));
+    section.appendChild(ul);
+    wrap.appendChild(section);
+  }
+
+  // handoff (free-form blob)
+  if (latest.handoff) {
+    const section = el("section", { class: "drawer-section" });
+    section.appendChild(el("h4", { class: "drawer-section-title", text: "handoff" }));
+    let text;
+    if (typeof latest.handoff === "string") {
+      text = latest.handoff;
+    } else {
+      try { text = JSON.stringify(latest.handoff, null, 2); }
+      catch (e) { text = String(latest.handoff); }
+    }
+    section.appendChild(el("pre", { class: "drawer-pre", text: text }));
+    wrap.appendChild(section);
+  }
+
+  if (wrap.childNodes.length === 0) return document.createDocumentFragment();
+  return wrap;
+}
+
+function highlightHistoryRow(n) {
+  const tr = document.getElementById("history-n-" + n);
+  if (!tr) return;
+  tr.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  tr.classList.remove("history-flash");
+  // force reflow so the animation restarts.
+  void tr.offsetWidth;
+  tr.classList.add("history-flash");
 }
 
 function renderDrawerHistory(history) {
@@ -422,7 +610,8 @@ function renderDrawerHistory(history) {
   // Newest first.
   const rows = [...history].reverse();
   for (const r of rows) {
-    tb.appendChild(el("tr", null,
+    const trAttrs = (r && r.n != null) ? { id: "history-n-" + r.n } : null;
+    tb.appendChild(el("tr", trAttrs,
       el("td", { class: "mono", text: r.n != null ? String(r.n) : "" }),
       el("td", { text: fmtTS(r.ts) }),
       el("td", null, r.status ? el("span", { class: "pill " + r.status, text: r.status }) : document.createTextNode("")),
@@ -475,8 +664,9 @@ function renderDrawerGuidance(ticketId) {
 }
 
 /* Tree */
-async function renderTree(root) {
+async function renderTree(root, background) {
   const t = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/tickets");
+  if (shouldSkipRender("tree", t, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Tree" }));
 
@@ -487,12 +677,18 @@ async function renderTree(root) {
       all.push({ row, parent: bucket.parent });
     }
   }
-  if (all.length === 0) {
+	  if (all.length === 0) {
     root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
     return;
-  }
+	  }
+  const treeParents = uniqueSorted(all.map((it) => it.row.parent_ticket || it.parent));
+  const treeBar = el("div", { class: "kanban-bar" });
+  treeBar.appendChild(selectControl(["", ...treeParents], state.treeFilter.parent, "All parents", (v) => { state.treeFilter.parent = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "plan", "issue", "task", "audit", "ops"].map(v => ({ value: v, text: v ? "Kind " + v : "" })), state.treeFilter.kind, "All kinds", (v) => { state.treeFilter.kind = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.treeFilter.priority, "All priorities", (v) => { state.treeFilter.priority = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"].map(v => ({ value: v, text: v ? "Status " + v : "" })), state.treeFilter.status, "All statuses", (v) => { state.treeFilter.status = v; syncURL(); loadPage(); }));
+  root.appendChild(treeBar);
 
-  // Build maps: id → row, and children of each parent (either workstream or ticket id).
   const byId = new Map();
   for (const item of all) byId.set(item.row.ticket, item);
   const childrenOf = new Map();
@@ -509,11 +705,12 @@ async function renderTree(root) {
       workstreamBuckets.get(p).push(item);
     }
   }
+  const visible = computeVisibleTreeTickets(all, byId);
 
   // A ticket that has a ticket-parent shouldn't ALSO appear at the top of its
   // workstream bucket — exclude such tickets from workstream listings.
   for (const [bucket, items] of workstreamBuckets) {
-    workstreamBuckets.set(bucket, items.filter((it) => !byId.has(it.row.parent_ticket)));
+    workstreamBuckets.set(bucket, items.filter((it) => visible.has(it.row.ticket) && !byId.has(it.row.parent_ticket)));
   }
 
   // Render each workstream bucket as a section, with each top-level ticket
@@ -525,13 +722,39 @@ async function renderTree(root) {
     root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: parent })));
     const list = el("div", { class: "tree-list" });
     for (const item of items) {
-      list.appendChild(renderTreeNode(item.row, childrenOf, byId, 0));
+      list.appendChild(renderTreeNode(item.row, childrenOf, byId, visible, 0));
     }
     root.appendChild(list);
   }
 }
 
-function renderTreeNode(row, childrenOf, byId, depth) {
+function computeVisibleTreeTickets(items, byId) {
+  const visible = new Set();
+  const hasFilter = state.treeFilter.parent || state.treeFilter.kind || state.treeFilter.priority || state.treeFilter.status;
+  for (const item of items) {
+    if (!hasFilter || treeItemMatches(item)) markVisibleWithAncestors(item, byId, visible);
+  }
+  return visible;
+}
+
+function treeItemMatches(item) {
+  if (state.treeFilter.parent && (item.row.parent_ticket || item.parent || "") !== state.treeFilter.parent) return false;
+  if (state.treeFilter.kind && (item.row.kind || "") !== state.treeFilter.kind) return false;
+  if (state.treeFilter.priority && (item.row.priority || "") !== state.treeFilter.priority) return false;
+  if (state.treeFilter.status && (item.row.status || "") !== state.treeFilter.status) return false;
+  return true;
+}
+
+function markVisibleWithAncestors(item, byId, visible) {
+  let cur = item;
+  while (cur && cur.row && cur.row.ticket && !visible.has(cur.row.ticket)) {
+    visible.add(cur.row.ticket);
+    cur = byId.get(cur.row.parent_ticket);
+  }
+}
+
+function renderTreeNode(row, childrenOf, byId, visible, depth) {
+  if (!visible.has(row.ticket)) return document.createDocumentFragment();
   const wrap = el("div", { class: "tree-node", style: "margin-left: " + (depth * 16) + "px" });
   const head = el("div", { class: "tree-node-head", onclick: () => openDrawer(row.ticket) });
   head.appendChild(el("span", { class: "mono", text: row.ticket }));
@@ -546,17 +769,34 @@ function renderTreeNode(row, childrenOf, byId, depth) {
   // Sort children by ts desc.
   kids.sort((a, b) => (b.row.ts || "").localeCompare(a.row.ts || ""));
   for (const child of kids) {
-    wrap.appendChild(renderTreeNode(child.row, childrenOf, byId, depth + 1));
+    wrap.appendChild(renderTreeNode(child.row, childrenOf, byId, visible, depth + 1));
   }
   return wrap;
 }
 
 /* Worklog */
-async function renderWorklog(root) {
+async function renderWorklog(root, background) {
   const w = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/worklog");
+  if (shouldSkipRender("worklog", w, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Worklog" }));
-  const rows = w.rows || [];
+  const allRows = w.rows || [];
+  const agents = uniqueSorted(allRows.map((r) => r.agent));
+  const bar = el("div", { class: "kanban-bar" });
+  bar.appendChild(textControl(state.worklogFilter.q, "Search ticket/task/result", (v) => { state.worklogFilter.q = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...agents], state.worklogFilter.agent, "All agents", (v) => { state.worklogFilter.agent = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{ value: "newest", text: "Newest first" }, { value: "oldest", text: "Oldest first" }], state.worklogSort, "Newest first", (v) => { state.worklogSort = v; syncURL(); loadPage(); }));
+  root.appendChild(bar);
+  let rows = allRows.filter((r) => {
+    if (state.worklogFilter.agent && (r.agent || "") !== state.worklogFilter.agent) return false;
+    const q = state.worklogFilter.q.trim().toLowerCase();
+    if (q) {
+      const hay = [r.ticket, r.task, r.result].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (state.worklogSort === "oldest") rows = rows.slice().sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
   if (rows.length === 0) {
     root.appendChild(el("div", { class: "state-empty", text: "No worklog entries." }));
     return;
@@ -580,8 +820,9 @@ async function renderWorklog(root) {
 }
 
 /* Insights */
-async function renderInsights(root) {
+async function renderInsights(root, background) {
   const ins = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/insights");
+  if (shouldSkipRender("insights", ins, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Insights" }));
   const cards = [
@@ -622,9 +863,21 @@ function startPolling() {
   const params = new URLSearchParams(location.search);
   if (params.get("project")) state.projectId = params.get("project");
   if (params.get("page")) state.page = params.get("page");
-  if (params.get("priority")) state.kanbanFilter.priority = params.get("priority");
-  if (params.get("kind")) state.kanbanFilter.kind = params.get("kind");
-  if (params.get("sort")) state.kanbanSort = params.get("sort");
+	  if (params.get("priority")) state.kanbanFilter.priority = params.get("priority");
+	  if (params.get("kind")) state.kanbanFilter.kind = params.get("kind");
+	  if (params.get("status")) state.kanbanFilter.status = params.get("status");
+	  if (params.get("parent")) state.kanbanFilter.parent = params.get("parent");
+	  if (params.get("agent")) state.kanbanFilter.agent = params.get("agent");
+	  if (params.get("blocked")) state.kanbanFilter.blocked = params.get("blocked");
+	  if (params.get("evidence")) state.kanbanFilter.evidence = params.get("evidence");
+	  if (params.get("sort")) state.kanbanSort = params.get("sort");
+	  if (params.get("tree_parent")) state.treeFilter.parent = params.get("tree_parent");
+	  if (params.get("tree_kind")) state.treeFilter.kind = params.get("tree_kind");
+	  if (params.get("tree_priority")) state.treeFilter.priority = params.get("tree_priority");
+	  if (params.get("tree_status")) state.treeFilter.status = params.get("tree_status");
+	  if (params.get("worklog_q")) state.worklogFilter.q = params.get("worklog_q");
+	  if (params.get("worklog_agent")) state.worklogFilter.agent = params.get("worklog_agent");
+	  if (params.get("worklog_sort")) state.worklogSort = params.get("worklog_sort");
   bind();
   document.querySelectorAll("#page-nav li").forEach((li) => {
     li.classList.toggle("active", li.dataset.page === state.page);
