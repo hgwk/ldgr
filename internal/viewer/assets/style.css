@@ -330,7 +330,7 @@ table.dense tbody tr:hover { background: var(--surface-2); }
 /* Drawer (used in Task 6; placeholder here) */
 #drawer {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: min(520px, 100vw);
+  width: min(760px, 92vw);
   background: var(--popover);
   color: var(--popover-foreground);
   border-left: 1px solid var(--border);
