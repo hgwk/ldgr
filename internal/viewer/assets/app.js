@@ -869,17 +869,40 @@ async function renderInsights(root, background) {
 }
 
 /* Init + polling */
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  document.documentElement.classList.toggle("dark", dark);
+  const btn = document.getElementById("theme-toggle");
+  if (btn) {
+    btn.textContent = dark ? "☀" : "◐";
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+  }
+}
 function bind() {
   document.querySelectorAll("#page-nav li").forEach((li) => {
     li.addEventListener("click", () => selectPage(li.dataset.page));
   });
   document.querySelector("#drawer .close").addEventListener("click", () => $("drawer").classList.remove("open"));
+  const themeBtn = document.getElementById("theme-toggle");
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const next = document.documentElement.classList.contains("dark") ? "light" : "dark";
+      try { localStorage.setItem("ldgr.theme", next); } catch (_) {}
+      applyTheme(next);
+    });
+  }
 }
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => loadProjects({ background: true }), POLL_MS);
 }
 (function init() {
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem("ldgr.theme"); } catch (_) {}
+  if (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    savedTheme = "dark";
+  }
+  applyTheme(savedTheme === "dark" ? "dark" : "light");
   const params = new URLSearchParams(location.search);
   if (params.get("project")) state.projectId = params.get("project");
   if (params.get("page")) state.page = params.get("page");

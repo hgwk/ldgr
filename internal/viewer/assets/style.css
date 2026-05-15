@@ -54,7 +54,7 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
 }
 
 .dark {
@@ -97,7 +97,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100dvh; }
 body {
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: 13px/1.5 var(--font-mono);
   color: var(--fg);
   background: var(--bg);
   display: grid;
@@ -105,6 +105,26 @@ body {
   height: 100dvh;
   overflow: hidden;
 }
+
+/* Theme toggle button in topbar */
+.theme-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover { background: var(--surface); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Sidebar */
 #sidebar {
