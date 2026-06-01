@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.0 - 2026-06-01
+
+### Changed
+
+- Install a single shared ldgr instruction body at `ledger/instructions/ldgr.md`.
+- Point both `AGENTS.md` and `CLAUDE.md` at that shared body with a top-of-file
+  `@ledger/instructions/ldgr.md` reference.
+- Migrate old split instruction pointers and remove old split instruction
+  bodies on reinstall.
+
 ## v0.1.0 - 2026-05-15
 
 Initial public release of `ldgr`.

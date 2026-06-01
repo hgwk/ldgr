@@ -26,9 +26,9 @@ type InitOpts struct {
 	WritingLanguage string
 }
 
-// RunInit creates ledger/* in targetDir and registers it. Re-running on an
-// already-initialized directory is a no-op for the data files and re-adds
-// the path in the registry idempotently.
+// RunInit creates ledger/* and ldgr instruction pointers in targetDir, then
+// registers it. Re-running on an already-initialized directory is a no-op for
+// the data files and re-adds the path in the registry idempotently.
 func RunInit(targetDir string, opts InitOpts, store *registry.Store) error {
 	slug := opts.Slug
 	if slug == "" {
@@ -70,6 +70,9 @@ func RunInit(targetDir string, opts InitOpts, store *registry.Store) error {
 		return err
 	}
 	if err := ensureGitignore(filepath.Join(targetDir, ".gitignore")); err != nil {
+		return err
+	}
+	if err := installInstructions(targetDir); err != nil {
 		return err
 	}
 

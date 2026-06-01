@@ -13,7 +13,7 @@ func init() {
 	Commands["instructions"] = RunInstructionsCLI
 }
 
-//go:embed instructions/*.ldgr.md
+//go:embed instructions/*.md
 var instructionFS embed.FS
 
 func init() {
@@ -21,8 +21,7 @@ func init() {
 }
 
 var (
-	agentsBody = readEmbedFile("instructions/AGENTS.ldgr.md")
-	claudeBody = readEmbedFile("instructions/CLAUDE.ldgr.md")
+	instructionBody = readEmbedFile("instructions/ldgr.md")
 )
 
 func readEmbedFile(name string) string {
@@ -42,15 +41,20 @@ const (
 
 type instructionTarget struct {
 	pointerFile string
-	bodyRel     string
-	body        string
 }
 
 func targets() []instructionTarget {
 	return []instructionTarget{
-		{"AGENTS.md", "ledger/instructions/AGENTS.ldgr.md", agentsBody},
-		{"CLAUDE.md", "ledger/instructions/CLAUDE.ldgr.md", claudeBody},
+		{"AGENTS.md"},
+		{"CLAUDE.md"},
 	}
+}
+
+const instructionBodyRel = "ledger/instructions/ldgr.md"
+
+var legacyBodyRels = []string{
+	"ledger/instructions/AGENTS.ldgr.md",
+	"ledger/instructions/CLAUDE.ldgr.md",
 }
 
 // RunInstructionsCLI implements `ldgr instructions install|uninstall`.
@@ -62,7 +66,7 @@ func RunInstructionsCLI(args []string, stdout, stderr io.Writer) int {
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("instructions " + sub)
 	target := fs.String("target", "", "")
-	keepBodies := fs.Bool("keep-bodies", false, "uninstall only: leave ledger/instructions/*.ldgr.md")
+	keepBodies := fs.Bool("keep-bodies", false, "uninstall only: leave ledger/instructions/ldgr.md")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -79,42 +83,51 @@ func RunInstructionsCLI(args []string, stdout, stderr io.Writer) int {
 }
 
 func runInstructionsInstall(dir string, stdout, stderr io.Writer) int {
+	if err := installInstructions(dir); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "instructions installed")
+	return 0
+}
+
+func installInstructions(dir string) error {
+	bodyPath := filepath.Join(dir, instructionBodyRel)
+	if err := os.MkdirAll(filepath.Dir(bodyPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(bodyPath, []byte(instructionBody), 0o644); err != nil {
+		return err
+	}
+	for _, oldRel := range legacyBodyRels {
+		_ = os.Remove(filepath.Join(dir, oldRel))
+	}
+
 	for _, t := range targets() {
-		bodyPath := filepath.Join(dir, t.bodyRel)
-		if err := os.MkdirAll(filepath.Dir(bodyPath), 0o755); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		if err := os.WriteFile(bodyPath, []byte(t.body), 0o644); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
 		pointerPath := filepath.Join(dir, t.pointerFile)
 		current := ""
 		if data, err := os.ReadFile(pointerPath); err == nil {
 			current = string(data)
 		} else if !os.IsNotExist(err) {
-			fmt.Fprintln(stderr, err)
-			return 1
+			return err
 		}
-		updated := upsertPointer(current, t.bodyRel)
+		updated := upsertPointer(current, instructionBodyRel)
 		if updated == current {
 			continue
 		}
 		if err := os.WriteFile(pointerPath, []byte(updated), 0o644); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
+			return err
 		}
 	}
-	fmt.Fprintln(stdout, "instructions installed")
-	return 0
+	return nil
 }
 
 func runInstructionsUninstall(dir string, keepBodies bool, stdout, stderr io.Writer) int {
 	for _, t := range targets() {
 		pointerPath := filepath.Join(dir, t.pointerFile)
 		if data, err := os.ReadFile(pointerPath); err == nil {
-			cleaned := removeBlock(string(data), instrMarkerStart, instrMarkerEnd)
+			cleaned := removeKnownPointerPreludes(string(data))
+			cleaned = removeBlock(cleaned, instrMarkerStart, instrMarkerEnd)
 			cleaned = removeBlock(cleaned, legacyStart, legacyEnd)
 			if strings.TrimSpace(cleaned) == "" {
 				_ = os.Remove(pointerPath)
@@ -126,7 +139,10 @@ func runInstructionsUninstall(dir string, keepBodies bool, stdout, stderr io.Wri
 			}
 		}
 		if !keepBodies {
-			_ = os.Remove(filepath.Join(dir, t.bodyRel))
+			_ = os.Remove(filepath.Join(dir, instructionBodyRel))
+			for _, oldRel := range legacyBodyRels {
+				_ = os.Remove(filepath.Join(dir, oldRel))
+			}
 		}
 	}
 	if !keepBodies {
@@ -137,32 +153,25 @@ func runInstructionsUninstall(dir string, keepBodies bool, stdout, stderr io.Wri
 }
 
 func upsertPointer(current, bodyRel string) string {
-	pointer := instrMarkerStart + "\n" +
-		"See [`" + bodyRel + "`](" + bodyRel + ") for the authoritative ldgr operating guide.\n" +
-		"If local legacy ledger instructions below conflict, this ldgr guide wins.\n" +
-		instrMarkerEnd + "\n"
-	if i := strings.Index(current, legacyStart); i >= 0 {
-		if j := strings.Index(current[i:], legacyEnd); j >= 0 {
-			end := i + j + len(legacyEnd)
-			if end < len(current) && current[end] == '\n' {
-				end++
-			}
-			return current[:i] + pointer + current[end:]
-		}
+	if hasPointerPrelude(current, bodyRel) &&
+		!strings.Contains(current, instrMarkerStart) &&
+		!strings.Contains(current, legacyStart) &&
+		!hasAnyLegacyPointerPrelude(current) {
+		return current
 	}
-	if i := strings.Index(current, instrMarkerStart); i >= 0 {
-		if j := strings.Index(current[i:], instrMarkerEnd); j >= 0 {
-			end := i + j + len(instrMarkerEnd)
-			if end < len(current) && current[end] == '\n' {
-				end++
-			}
-			return current[:i] + pointer + current[end:]
-		}
-	}
+
+	pointer := "@" + bodyRel
+	cleaned := removeKnownPointerPreludes(current)
+	cleaned = removeBlock(cleaned, instrMarkerStart, instrMarkerEnd)
+	cleaned = removeBlock(cleaned, legacyStart, legacyEnd)
+	body := strings.TrimSpace(stripLeadingPointerSeparator(cleaned))
 	if current == "" {
-		return pointer
+		return pointer + "\n"
 	}
-	return pointer + "\n" + current
+	if body == "" {
+		return pointer + "\n"
+	}
+	return pointer + "\n\n---\n\n" + body + "\n"
 }
 
 func removeBlock(s, start, end string) string {
@@ -181,4 +190,70 @@ func removeBlock(s, start, end string) string {
 	out := s[:i] + s[cut:]
 	out = strings.TrimPrefix(out, "\n")
 	return out
+}
+
+func hasPointerPrelude(content, bodyRel string) bool {
+	return pointerPreludePosition(content, bodyRel) >= 0
+}
+
+func removePointerPrelude(content, bodyRel string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	pos := pointerPreludePosition(content, bodyRel)
+	if pos < 0 {
+		return content, false
+	}
+	out := make([]string, 0, len(lines)-1)
+	for i, line := range lines {
+		if i != pos {
+			out = append(out, line)
+		}
+	}
+	return strings.TrimSpace(stripLeadingPointerSeparator(strings.Join(out, "\n"))), true
+}
+
+func removeKnownPointerPreludes(content string) string {
+	out := content
+	for _, bodyRel := range append([]string{instructionBodyRel}, legacyBodyRels...) {
+		var removed bool
+		out, removed = removePointerPrelude(out, bodyRel)
+		if removed {
+			out = stripLeadingPointerSeparator(out)
+		}
+	}
+	return out
+}
+
+func hasAnyLegacyPointerPrelude(content string) bool {
+	for _, bodyRel := range legacyBodyRels {
+		if hasPointerPrelude(content, bodyRel) {
+			return true
+		}
+	}
+	return false
+}
+
+func pointerPreludePosition(content, bodyRel string) int {
+	ref := "@" + bodyRel
+	for i, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == ref {
+			for _, before := range strings.Split(content, "\n")[:i] {
+				if strings.TrimSpace(before) != "" {
+					return -1
+				}
+			}
+			return i
+		}
+	}
+	return -1
+}
+
+func stripLeadingPointerSeparator(content string) string {
+	trimmed := strings.TrimLeft(content, " \t\r\n")
+	if trimmed == "---" {
+		return ""
+	}
+	if rest, ok := strings.CutPrefix(trimmed, "---\n"); ok {
+		return strings.TrimLeft(rest, " \t\r\n")
+	}
+	return trimmed
 }

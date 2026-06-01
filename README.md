@@ -213,6 +213,11 @@ ldgr instructions install                # AGENTS.md / CLAUDE.md pointer + ledge
 ldgr view --target .                     # dashboard for this project only
 ```
 
+`ldgr init` and `ldgr instructions install` write the authoritative instruction
+body to `ledger/instructions/ldgr.md` and add a top-of-file
+`@ledger/instructions/ldgr.md` reference to both `AGENTS.md` and `CLAUDE.md`,
+creating those files when missing.
+
 `--language` sets `ledger/config.json` → `writing_language`. Agents should use
 that language for free-text ledger fields such as `task`, `notes`, `result`,
 `audit_notes`, `summary`, and `acceptance`; schema keys, enum values, paths,

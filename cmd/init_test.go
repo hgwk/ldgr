@@ -24,10 +24,36 @@ func TestRunInit_CreatesFiles(t *testing.T) {
 		"ledger/goal.json",
 		"ledger/tickets.jsonl",
 		"ledger/worklog.jsonl",
+		"ledger/instructions/ldgr.md",
+		"AGENTS.md",
+		"CLAUDE.md",
 	}
 	for _, p := range mustExist {
 		if _, err := os.Stat(filepath.Join(target, p)); err != nil {
 			t.Fatalf("expected %s to exist: %v", p, err)
+		}
+	}
+}
+
+func TestRunInit_InstallsInstructionPointers(t *testing.T) {
+	target := t.TempDir()
+	regDir := t.TempDir()
+	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
+	if err := os.WriteFile(filepath.Join(target, "AGENTS.md"), []byte("# Project\nkeep me\n"), 0o644); err != nil {
+		t.Fatalf("seed AGENTS.md: %v", err)
+	}
+
+	if err := RunInit(target, InitOpts{Slug: "myapp"}, store); err != nil {
+		t.Fatalf("RunInit: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	for _, needle := range []string{"@ledger/instructions/ldgr.md", "keep me"} {
+		if !contains(string(data), needle) {
+			t.Fatalf("AGENTS.md missing %q:\n%s", needle, data)
 		}
 	}
 }
