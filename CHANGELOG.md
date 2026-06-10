@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.0 - 2026-06-10
+
+### Changed
+
+- Move ldgr tool metadata to root `.ldgr/` paths: instructions, lock,
+  migration backups, import parse errors, and archived legacy sources.
+- Open the `ldgr view` dashboard in the default browser after the local server
+  starts; pass `--no-open` to keep the previous serve-only behavior.
+- Close the viewer ticket drawer when clicking outside it or pressing Escape.
+- Centralize lifecycle transitions, next-state policy, Kanban columns, and
+  status-to-state board mapping in the ledger policy layer.
+- Install the shared ldgr instruction body under `~/.ldgr/operating-guide.md` and
+  point `AGENTS.md` / `CLAUDE.md` at it with an absolute include.
+- Rewrite the installed ldgr agent guide around the state model, planning,
+  verification, code boundaries, security, git hygiene, and documentation rules.
+- Add `ldgr verify` guardrail warnings for path claim conflicts, empty worklog
+  commands, weak review evidence, dirty generated/build artifacts, dirty
+  env/secret-like files, and incomplete handoff notes.
+- Have `ldgr verify` detect root legacy ledger files and parse errors, with
+  guidance to use `ldgr import legacy`.
+- Collapse the viewer's Dashboard/Kanban/Tree tabs into a single Tickets view
+  with Kanban/Tree switch controls, and split viewer assets into smaller files.
+
 ## v0.2.0 - 2026-06-01
 
 ### Changed
@@ -28,7 +51,7 @@ Initial public release of `ldgr`.
 - Read-only web viewer with project selection, Kanban/grid views, drawer detail,
   taxonomy badges, ownership, stale lifecycle/claim indicators, active agents,
   audit queue, lifecycle metrics, and verify status.
-- Legacy import and explicit `legacy-to-v1` canonical rewrite flow with backup,
+- Legacy import and explicit `legacy-to-v1` state-model rewrite flow with backup,
   plan/apply modes, mapping warnings, and `historical_baseline` compatibility.
 - Status taxonomy aliases for `doing`/`review` while preserving historical
   `in_progress`/`audit_ready` rows.
@@ -47,7 +70,7 @@ Initial public release of `ldgr`.
 ### Compatibility Notes
 
 - No schema v2 exists in this release. The recent taxonomy work is a status
-  label/compatibility refactor plus an optional canonical schema v1 rewrite path.
+  label/compatibility refactor plus an optional state-model rewrite path.
 - Historical rows may surface lifecycle/taxonomy compatibility warnings. Default
   `ldgr verify` keeps those as warnings, and configured `historical_baseline`
   values can suppress old compatibility warnings for active append gates.

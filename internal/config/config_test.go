@@ -80,7 +80,7 @@ func TestSchemaVersion(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{
   "schema_version": 1,
   "project_id": "9f8a7c6b5d4e3f2a1b0c9d8e7f6a5b4c",
-  "slug": "canonical"
+  "slug": "state"
 }`), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}

@@ -1,0 +1,68 @@
+package cmd
+
+import (
+	"bytes"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/hgwk/ldgr/internal/ledger"
+)
+
+func TestTicketAddState_AppendsSchemaStateRow(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	in := `{"id":"STATE-1","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build state-model writer","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	var stderr bytes.Buffer
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(in), &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("state-model add failed: %s", stderr.String())
+	}
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	if len(rows) != 1 {
+		t.Fatalf("expected one row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row["id"] != "STATE-1" || row["owner"] != "codex" || row["state"] != "ready" {
+		t.Fatalf("unexpected state-model row: %+v", row)
+	}
+	event, _ := row["event"].(map[string]any)
+	if event["actor"] != "codex" {
+		t.Fatalf("event.actor should default from agent: %+v", event)
+	}
+}
+
+func TestTicketEventState_AuditPassDone(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-PASS","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-PASS","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-PASS","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	reviewN := int(rows[len(rows)-1]["n"].(float64))
+	pass := fmt.Sprintf(`{"id":"STATE-PASS","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	var stderr bytes.Buffer
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("state-model audit pass failed: %s", stderr.String())
+	}
+	rows, _ = ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	if rows[len(rows)-1]["state"] != "done" {
+		t.Fatalf("expected done row, got %+v", rows[len(rows)-1])
+	}
+}
+
+func TestTicketEventState_RejectsDirectDone(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-BAD","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	var stderr bytes.Buffer
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-BAD","state":"done","event":{"role":"implementer","summary":"done","notes":""}}`), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected direct done rejection")
+	}
+	if !strings.Contains(stderr.String(), "ready -> done") {
+		t.Fatalf("stderr should name rejected edge, got: %s", stderr.String())
+	}
+}

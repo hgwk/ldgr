@@ -159,7 +159,7 @@ func parseErrorsChange(targetDir string, errs []ParseError) Change {
 		buf.Write(b)
 		buf.WriteByte('\n')
 	}
-	rel := "ledger/import-errors.jsonl"
+	rel := ".ldgr/import-errors.jsonl"
 	full := filepath.Join(targetDir, rel)
 	return diffBytes(full, rel, buf.Bytes())
 }

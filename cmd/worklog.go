@@ -38,13 +38,13 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	if isCanonicalTarget(dir) {
-		row, err := normalizeCanonicalWorklog(dir, input, stderr)
+	if isStateTarget(dir) {
+		row, err := normalizeStateWorklog(dir, input, stderr)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
+		out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), ldgrLockPath(dir), ledger.Row(row))
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -105,7 +105,7 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	}
 	ensureRowTSAfter(row, latest)
 
-	out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
+	out, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), ldgrLockPath(dir), ledger.Row(row))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -116,15 +116,15 @@ func RunWorklogCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	return encErr(enc.Encode(out), stderr)
 }
 
-func normalizeCanonicalWorklog(dir string, input map[string]any, stderr io.Writer) (map[string]any, error) {
-	row, err := autoFieldsCanonicalWorklog(input, stderr)
+func normalizeStateWorklog(dir string, input map[string]any, stderr io.Writer) (map[string]any, error) {
+	row, err := autoFieldsStateWorklog(input, stderr)
 	if err != nil {
 		return nil, err
 	}
-	if err := requireFields(row, withoutN(ledger.CanonicalWorklogRequired), "worklog"); err != nil {
+	if err := requireFields(row, withoutN(ledger.StateWorklogRequired), "worklog"); err != nil {
 		return nil, err
 	}
-	if err := requireNonEmpty(row, ledger.CanonicalWorklogNonEmpty, "worklog"); err != nil {
+	if err := requireNonEmpty(row, ledger.StateWorklogNonEmpty, "worklog"); err != nil {
 		return nil, err
 	}
 	ticketID, _ := row["ticket"].(string)
@@ -132,18 +132,18 @@ func normalizeCanonicalWorklog(dir string, input map[string]any, stderr io.Write
 	if err != nil {
 		return nil, err
 	}
-	latest, ok := findLatestCanonicalTicket(ticketRows, ticketID)
+	latest, ok := findLatestStateTicket(ticketRows, ticketID)
 	if !ok {
 		return nil, fmt.Errorf("worklog: ticket %q does not exist", ticketID)
 	}
-	if !isCanonicalWorklogAllowed(latest) {
+	if !isStateWorklogAllowed(latest) {
 		return nil, fmt.Errorf("worklog: ticket %q is not audit-pass done; cannot record a delivery yet", ticketID)
 	}
 	ensureRowTSAfter(row, latest)
 	return row, nil
 }
 
-func autoFieldsCanonicalWorklog(in map[string]any, stderr io.Writer) (map[string]any, error) {
+func autoFieldsStateWorklog(in map[string]any, stderr io.Writer) (map[string]any, error) {
 	if _, ok := in["ts"]; !ok || in["ts"] == "" {
 		in["ts"] = time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	}
@@ -192,7 +192,7 @@ func isWorklogAllowed(latest ledger.Row) bool {
 	return lifecycle.IsAuditPassDone(latest)
 }
 
-func isCanonicalWorklogAllowed(latest ledger.Row) bool {
+func isStateWorklogAllowed(latest ledger.Row) bool {
 	if state, _ := latest["state"].(string); state != "done" {
 		return false
 	}
@@ -206,10 +206,10 @@ func isCanonicalWorklogAllowed(latest ledger.Row) bool {
 	if result, _ := event["result"].(string); result != "pass" {
 		return false
 	}
-	return hasPositiveCanonicalNumber(event["reviewed_n"]) && hasNonEmptyCanonicalList(latest, "evidence")
+	return hasPositiveStateNumber(event["reviewed_n"]) && hasNonEmptyStateList(latest, "evidence")
 }
 
-func findLatestCanonicalTicket(rows []ledger.Row, id string) (ledger.Row, bool) {
+func findLatestStateTicket(rows []ledger.Row, id string) (ledger.Row, bool) {
 	var latest ledger.Row
 	for _, r := range rows {
 		if r["id"] == id {

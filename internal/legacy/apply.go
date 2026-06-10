@@ -36,14 +36,14 @@ func Apply(plan Plan, opts ApplyOpts) error {
 	if err := os.MkdirAll(ledgerDir, 0o755); err != nil {
 		return err
 	}
-	release, err := locks.Acquire(filepath.Join(ledgerDir, ".lock"), locks.Options{})
+	release, err := locks.Acquire(filepath.Join(metaDir(plan.TargetDir), "lock"), locks.Options{})
 	if err != nil {
 		return err
 	}
 	defer release()
 
 	stamp := opts.BackupPrefix + opts.now().Format("20060102-150405")
-	backupDir := filepath.Join(ledgerDir, ".backup", stamp)
+	backupDir := filepath.Join(metaDir(plan.TargetDir), "backups", stamp)
 
 	for _, c := range plan.Changes {
 		if c.Action == ActionNoop {
@@ -122,10 +122,10 @@ func writeAtomic(path string, data []byte) error {
 
 func ensureGitignore(target string) error {
 	required := []string{
-		"ledger/.lock",
-		"ledger/.backup/",
-		"ledger/import-errors.jsonl",
-		"ledger/legacy/",
+		".ldgr/lock",
+		".ldgr/backups/",
+		".ldgr/import-errors.jsonl",
+		".ldgr/legacy/",
 	}
 	path := filepath.Join(target, ".gitignore")
 	existing := ""
@@ -155,7 +155,7 @@ func ensureGitignore(target string) error {
 }
 
 func archiveOriginals(target string) error {
-	legacyDir := filepath.Join(target, "ledger", "legacy")
+	legacyDir := filepath.Join(metaDir(target), "legacy")
 	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
 		return err
 	}
@@ -177,6 +177,10 @@ func archiveOriginals(target string) error {
 		}
 	}
 	return nil
+}
+
+func metaDir(target string) string {
+	return filepath.Join(target, ".ldgr")
 }
 
 func copyFile(src, dst string) error {

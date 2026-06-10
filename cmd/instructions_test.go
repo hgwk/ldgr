@@ -13,12 +13,21 @@ old pointer body
 <!-- LEDGER_KIT_END -->
 `
 
+func setTestLDGRHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("LDGR_HOME", home)
+	return home
+}
+
 func TestInstructionsInstall_CreatesBodiesAndPointer(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	if code := RunInstructionsCLI([]string{"install", "--target", dir}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("install failed")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "ledger/instructions/ldgr.md")); err != nil {
+	bodyPath := filepath.Join(home, "operating-guide.md")
+	if _, err := os.Stat(bodyPath); err != nil {
 		t.Fatalf("missing instruction body: %v", err)
 	}
 	for _, p := range []string{"AGENTS.md", "CLAUDE.md"} {
@@ -26,13 +35,14 @@ func TestInstructionsInstall_CreatesBodiesAndPointer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected %s: %v", p, err)
 		}
-		if !strings.HasPrefix(string(data), "@ledger/instructions/ldgr.md\n") {
+		if !strings.HasPrefix(string(data), "@"+bodyPath+"\n") {
 			t.Fatalf("missing pointer in %s: %s", p, data)
 		}
 	}
 }
 
 func TestInstructionsInstall_PreservesExistingMarkdown(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# My project\nuser content\n"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -42,12 +52,13 @@ func TestInstructionsInstall_PreservesExistingMarkdown(t *testing.T) {
 	if !strings.Contains(string(data), "user content") {
 		t.Fatalf("user content lost: %s", data)
 	}
-	if !strings.HasPrefix(string(data), "@ledger/instructions/ldgr.md\n") {
+	if !strings.HasPrefix(string(data), "@"+filepath.Join(home, "operating-guide.md")+"\n") {
 		t.Fatalf("missing marker: %s", data)
 	}
 }
 
 func TestInstructionsInstall_Idempotent(t *testing.T) {
+	setTestLDGRHome(t)
 	dir := t.TempDir()
 	RunInstructionsCLI([]string{"install", "--target", dir}, &bytes.Buffer{}, &bytes.Buffer{})
 	first, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
@@ -59,6 +70,7 @@ func TestInstructionsInstall_Idempotent(t *testing.T) {
 }
 
 func TestInstructionsInstall_MigratesLegacyMarker(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	body := legacyBlock + "# project\nuser content\n"
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(body), 0o644)
@@ -69,7 +81,7 @@ func TestInstructionsInstall_MigratesLegacyMarker(t *testing.T) {
 	if strings.Contains(string(data), "LEDGER_KIT_START") {
 		t.Fatalf("legacy marker should be migrated, still present: %s", data)
 	}
-	if !strings.HasPrefix(string(data), "@ledger/instructions/ldgr.md\n") {
+	if !strings.HasPrefix(string(data), "@"+filepath.Join(home, "operating-guide.md")+"\n") {
 		t.Fatalf("new marker missing: %s", data)
 	}
 	if !strings.Contains(string(data), "user content") {
@@ -78,6 +90,7 @@ func TestInstructionsInstall_MigratesLegacyMarker(t *testing.T) {
 }
 
 func TestInstructionsInstall_MigratesSplitPointer(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	body := "@ledger/instructions/AGENTS.ldgr.md\n\n---\n\n# project\nuser content\n"
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(body), 0o644)
@@ -89,7 +102,7 @@ func TestInstructionsInstall_MigratesSplitPointer(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	if !strings.HasPrefix(string(data), "@ledger/instructions/ldgr.md\n") {
+	if !strings.HasPrefix(string(data), "@"+filepath.Join(home, "operating-guide.md")+"\n") {
 		t.Fatalf("new common pointer missing: %s", data)
 	}
 	if strings.Contains(string(data), "AGENTS.ldgr.md") {
@@ -104,6 +117,7 @@ func TestInstructionsInstall_MigratesSplitPointer(t *testing.T) {
 }
 
 func TestInstructionsUninstall_RemovesPointer(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	RunInstructionsCLI([]string{"install", "--target", dir}, &bytes.Buffer{}, &bytes.Buffer{})
 	if code := RunInstructionsCLI([]string{"uninstall", "--target", dir}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
@@ -111,20 +125,21 @@ func TestInstructionsUninstall_RemovesPointer(t *testing.T) {
 	}
 	for _, p := range []string{"AGENTS.md", "CLAUDE.md"} {
 		data, err := os.ReadFile(filepath.Join(dir, p))
-		if err == nil && strings.Contains(string(data), "@ledger/instructions/") {
+		if err == nil && (strings.Contains(string(data), "@"+filepath.Join(home, "operating-guide.md")) || strings.Contains(string(data), "@.ldgr/operating-guide.md") || strings.Contains(string(data), "@ledger/instructions/")) {
 			t.Fatalf("pointer survived uninstall in %s: %s", p, data)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "ledger", "instructions", "ldgr.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, ".ldgr", "operating-guide.md")); !os.IsNotExist(err) {
 		t.Fatalf("body should be removed: err=%v", err)
 	}
 }
 
 func TestInstructionsUninstall_KeepBodies(t *testing.T) {
+	home := setTestLDGRHome(t)
 	dir := t.TempDir()
 	RunInstructionsCLI([]string{"install", "--target", dir}, &bytes.Buffer{}, &bytes.Buffer{})
 	RunInstructionsCLI([]string{"uninstall", "--target", dir, "--keep-bodies"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if _, err := os.Stat(filepath.Join(dir, "ledger", "instructions", "ldgr.md")); err != nil {
-		t.Fatalf("body should be kept: %v", err)
+	if _, err := os.Stat(filepath.Join(home, "operating-guide.md")); err != nil {
+		t.Fatalf("home body should be kept: %v", err)
 	}
 }

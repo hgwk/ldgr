@@ -51,8 +51,8 @@ func runAuditPass(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := resolveTarget(*target)
-	if isCanonicalTarget(dir) {
-		reviewedN, err := findCanonicalReviewedN(dir, *ticket)
+	if isStateTarget(dir) {
+		reviewedN, err := findStateReviewedN(dir, *ticket)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -104,8 +104,8 @@ func runAuditRequestChanges(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := resolveTarget(*target)
-	if isCanonicalTarget(dir) {
-		reviewedN, err := findCanonicalReviewedN(dir, *ticket)
+	if isStateTarget(dir) {
+		reviewedN, err := findStateReviewedN(dir, *ticket)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -139,10 +139,10 @@ func runAuditRequestChanges(args []string, stdout, stderr io.Writer) int {
 	return appendTicketEvent(dir, input, stdout, stderr)
 }
 
-// findCanonicalReviewedN walks ticket rows to find the most recent review row for the
-// canonical v1 ticket. The name is historical and should be collapsed in a
+// findStateReviewedN walks ticket rows to find the most recent review row for the
+// state-model ticket. The name is historical and should be collapsed in a
 // later mechanical rename.
-func findCanonicalReviewedN(dir, ticket string) (int, error) {
+func findStateReviewedN(dir, ticket string) (int, error) {
 	rows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
 	if err != nil {
 		return 0, err
@@ -196,7 +196,7 @@ func appendTicketEvent(dir string, input map[string]any, stdout, stderr io.Write
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	out, err := ledger.Append(filepath.Join(dir, "ledger", "tickets.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row))
+	out, err := ledger.Append(filepath.Join(dir, "ledger", "tickets.jsonl"), ldgrLockPath(dir), ledger.Row(row))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

@@ -1,0 +1,95 @@
+package cmd
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"path/filepath"
+
+	"github.com/hgwk/ldgr/internal/ledger"
+	"github.com/hgwk/ldgr/internal/lifecycle"
+)
+
+func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := newFlagSet("ticket add")
+	target := fs.String("target", "", "")
+	jsonSpec := fs.String("json", "", "")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	dir := resolveTarget(*target)
+
+	input, err := ReadJSONInput(*jsonSpec, stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+
+	row, err := normalizeTicketAdd(dir, input, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	path := filepath.Join(dir, "ledger", "tickets.jsonl")
+	lock := ldgrLockPath(dir)
+	out, err := ledger.Append(path, lock, ledger.Row(row))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	emitTicketGuidance(dir, out, stderr)
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	return encErr(enc.Encode(out), stderr)
+}
+
+func normalizeTicketAdd(dir string, input map[string]any, stderr io.Writer) (map[string]any, error) {
+	if isStateTicketInput(input) {
+		return normalizeStateTicketAdd(dir, input, stderr)
+	}
+	ticket, _ := input["ticket"].(string)
+	if ticket == "" {
+		return nil, errors.New("ticket: field 'ticket' is required")
+	}
+	rows, err := ledger.ReadRows(filepath.Join(dir, "ledger", "tickets.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		if r["ticket"] == ticket {
+			return nil, fmt.Errorf("ticket %q already exists (use `ticket event` to update)", ticket)
+		}
+	}
+
+	// Set defaults for kind and priority
+	if _, has := input["kind"]; !has {
+		input["kind"] = "task"
+	}
+	if _, has := input["priority"]; !has {
+		input["priority"] = "P2"
+	}
+
+	resolved, err := autoFields(dir, input, stderr)
+	if err != nil {
+		return nil, err
+	}
+	// Check all required fields except 'n' which is assigned by Append
+	required := make([]string, 0, len(ledger.TicketRequired))
+	for _, f := range ledger.TicketRequired {
+		if f != "n" {
+			required = append(required, f)
+		}
+	}
+	if err := requireFields(resolved, required, "ticket"); err != nil {
+		return nil, err
+	}
+	if err := requireNonEmpty(resolved, ledger.TicketNonEmpty, "ticket"); err != nil {
+		return nil, err
+	}
+	if v := lifecycle.Validate(ledger.Row(resolved), nil); v != nil {
+		return nil, fmt.Errorf("%s\n%s", v.Message, v.Hint)
+	}
+	return resolved, nil
+}

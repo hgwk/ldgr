@@ -55,8 +55,8 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	if *ticket == "" {
 		// Project-wide mode.
 		pg := guidance.ComputeProject(ticketRows, worklog, *role)
-		if isCanonicalTarget(dir) {
-			pg = guidance.ComputeCanonicalProject(ticketRows, worklog, *role)
+		if isStateTarget(dir) {
+			pg = guidance.ComputeStateProject(ticketRows, worklog, *role)
 		}
 		pg.WritingLanguage = writingLanguage
 		if *gitFlag && gitutil.IsWorkTree(dir) {
@@ -93,8 +93,8 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	// Ticket-scoped mode.
 	var latest ledger.Row
 	var ok bool
-	if isCanonicalTarget(dir) {
-		latest, ok = findLatestCanonicalTicket(ticketRows, *ticket)
+	if isStateTarget(dir) {
+		latest, ok = findLatestStateTicket(ticketRows, *ticket)
 	} else {
 		latest, ok = findLatestTicket(ticketRows, *ticket)
 	}
@@ -103,8 +103,8 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	var g guidance.Guidance
-	if isCanonicalTarget(dir) {
-		g = guidance.ComputeCanonical(latest, worklog)
+	if isStateTarget(dir) {
+		g = guidance.ComputeState(latest, worklog)
 	} else {
 		g = guidance.Compute(latest, worklog)
 	}

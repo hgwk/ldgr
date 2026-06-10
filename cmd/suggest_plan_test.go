@@ -1,0 +1,60 @@
+package cmd
+
+import (
+	"bytes"
+	"encoding/json"
+	"testing"
+)
+
+func TestSuggestPlan_NewTicketSkeleton(t *testing.T) {
+	target, _ := mustInit(t)
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"plan", "--target", target, "--ticket", "PLAN-1"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest plan failed: %s", out.String())
+	}
+	var skel map[string]any
+	json.Unmarshal(out.Bytes(), &skel)
+	if skel["id"] != "PLAN-1" || skel["state"] != "backlog" || skel["type"] != "plan" {
+		t.Fatalf("plan skeleton wrong: %+v", skel)
+	}
+}
+
+func TestSuggestPlan_UsesWritingLanguage(t *testing.T) {
+	target, store := mustInit(t)
+	if err := RunInit(target, InitOpts{Slug: "myapp", WritingLanguage: "ko"}, store); err != nil {
+		t.Fatalf("set language: %v", err)
+	}
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"plan", "--target", target, "--ticket", "PLAN-KO"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest plan failed: %s", out.String())
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if skel["writing_language"] != "ko" {
+		t.Fatalf("missing writing_language: %+v", skel)
+	}
+	if skel["title"] != "<한 줄 작업 설명>" {
+		t.Fatalf("expected Korean title placeholder, got %+v", skel["title"])
+	}
+}
+
+func TestSuggestPlanState_NewTicketSkeleton(t *testing.T) {
+	target := mustInitState(t)
+	seedStateTicket(t, target, "SEED-STATE")
+	var out bytes.Buffer
+	if code := RunSuggestCLI([]string{"plan", "--target", target, "--ticket", "PLAN-STATE"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("suggest state-model plan failed: %s", out.String())
+	}
+	var skel map[string]any
+	if err := json.Unmarshal(out.Bytes(), &skel); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if skel["id"] != "PLAN-STATE" || skel["state"] != "backlog" || skel["type"] != "plan" {
+		t.Fatalf("state-model plan skeleton wrong: %+v", skel)
+	}
+	if _, ok := skel["ticket"]; ok {
+		t.Fatalf("state-model plan skeleton should not include v1 ticket: %+v", skel)
+	}
+}

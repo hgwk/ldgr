@@ -10,6 +10,8 @@ import (
 )
 
 func TestRunInit_CreatesFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("LDGR_HOME", home)
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -24,7 +26,6 @@ func TestRunInit_CreatesFiles(t *testing.T) {
 		"ledger/goal.json",
 		"ledger/tickets.jsonl",
 		"ledger/worklog.jsonl",
-		"ledger/instructions/ldgr.md",
 		"AGENTS.md",
 		"CLAUDE.md",
 	}
@@ -33,9 +34,14 @@ func TestRunInit_CreatesFiles(t *testing.T) {
 			t.Fatalf("expected %s to exist: %v", p, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(home, "operating-guide.md")); err != nil {
+		t.Fatalf("expected home instructions to exist: %v", err)
+	}
 }
 
 func TestRunInit_InstallsInstructionPointers(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("LDGR_HOME", home)
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -51,14 +57,22 @@ func TestRunInit_InstallsInstructionPointers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	for _, needle := range []string{"@ledger/instructions/ldgr.md", "keep me"} {
+	for _, needle := range []string{"@" + filepath.Join(home, "operating-guide.md"), "keep me"} {
 		if !contains(string(data), needle) {
 			t.Fatalf("AGENTS.md missing %q:\n%s", needle, data)
 		}
 	}
+	claudeData, err := os.ReadFile(filepath.Join(target, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("read CLAUDE.md: %v", err)
+	}
+	if !contains(string(claudeData), "@"+filepath.Join(home, "operating-guide.md")) {
+		t.Fatalf("CLAUDE.md missing instruction pointer:\n%s", claudeData)
+	}
 }
 
 func TestRunInit_RegistersProject(t *testing.T) {
+	t.Setenv("LDGR_HOME", t.TempDir())
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -80,6 +94,7 @@ func TestRunInit_RegistersProject(t *testing.T) {
 }
 
 func TestRunInit_IsIdempotent(t *testing.T) {
+	t.Setenv("LDGR_HOME", t.TempDir())
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -103,6 +118,7 @@ func TestRunInit_IsIdempotent(t *testing.T) {
 }
 
 func TestRunInit_WritingLanguage(t *testing.T) {
+	t.Setenv("LDGR_HOME", t.TempDir())
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -128,6 +144,7 @@ func TestRunInit_WritingLanguage(t *testing.T) {
 }
 
 func TestRunInit_WritingLanguagePreservesLegacyConfigShape(t *testing.T) {
+	t.Setenv("LDGR_HOME", t.TempDir())
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -164,6 +181,7 @@ func TestRunInit_WritingLanguagePreservesLegacyConfigShape(t *testing.T) {
 }
 
 func TestRunInit_UpdatesGitignore(t *testing.T) {
+	t.Setenv("LDGR_HOME", t.TempDir())
 	target := t.TempDir()
 	regDir := t.TempDir()
 	store := registry.New(filepath.Join(regDir, "registry.json"), filepath.Join(regDir, "registry.lock"))
@@ -174,7 +192,7 @@ func TestRunInit_UpdatesGitignore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
-	for _, needle := range []string{"ledger/.lock", "ledger/.backup/", "ledger/import-errors.jsonl"} {
+	for _, needle := range []string{".ldgr/lock", ".ldgr/backups/", ".ldgr/import-errors.jsonl", ".ldgr/legacy/"} {
 		if !contains(string(data), needle) {
 			t.Fatalf(".gitignore missing %q; got:\n%s", needle, data)
 		}

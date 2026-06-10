@@ -1,0 +1,22 @@
+/* Responsive */
+@media (max-width: 960px) {
+  .kanban-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: 100dvh; overflow: hidden; }
+  #sidebar { height: auto; max-height: 32dvh; border-right: none; border-bottom: 1px solid var(--border); }
+  #main { height: auto; min-height: 0; overflow-y: auto; }
+  .kanban-board { max-height: calc(68dvh - 120px); }
+  .kanban-col-list { overflow-y: auto; }
+  /* Drawer fits tighter on phones; cap scroll panes a touch smaller so the
+     close button + drawer head remain reachable without long scrolls. */
+  #drawer { padding: var(--space-4) var(--space-3); }
+  .drawer-prose { max-height: 180px; }
+  .drawer-pre { max-height: 160px; }
+  .drawer-meta { grid-template-columns: 1fr; gap: 2px var(--space-2); }
+  .drawer-head { flex-wrap: wrap; }
+}
+@media (max-width: 540px) {
+  .kanban-board { grid-template-columns: 1fr; }
+}
+

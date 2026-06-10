@@ -2,7 +2,7 @@
 // tickets.jsonl, worklog.jsonl, and goal.json.
 package ledger
 
-// Row is the canonical wire form: an ordered, unknown-field-preserving
+// Row is the state-shaped wire form: an ordered, unknown-field-preserving
 // JSON object. We marshal/unmarshal as map[string]any so that round-trip
 // preserves anything the writer included that the current binary doesn't
 // know about (forward compatibility).
@@ -72,31 +72,31 @@ var PriorityEnum = map[string]struct{}{
 	"P3": {},
 }
 
-// Canonical v1 field sets and enums: id/state/type/title/event for tickets
-// and actor/title/summary for worklogs.
+// State-model field sets and enums: id/state/type/title/event for tickets and
+// actor/title/summary for worklogs.
 var (
-	CanonicalTicketRequired = []string{
+	StateTicketRequired = []string{
 		"n", "ts", "id", "parent", "type", "state", "area", "priority",
 		"title", "owner", "blocked_by", "acceptance", "evidence", "event",
 	}
-	CanonicalTicketNonEmpty = []string{
+	StateTicketNonEmpty = []string{
 		"id", "parent", "type", "state", "area", "priority", "title", "owner",
 	}
-	CanonicalWorklogRequired = []string{
+	StateWorklogRequired = []string{
 		"n", "ts", "ticket", "actor", "title", "summary", "paths", "commands", "notes",
 	}
-	CanonicalWorklogNonEmpty = []string{
+	StateWorklogNonEmpty = []string{
 		"ticket", "actor", "title", "summary",
 	}
-	CanonicalEventRequired = []string{
+	EventRequired = []string{
 		"actor", "role", "summary", "notes",
 	}
-	CanonicalEventNonEmpty = []string{
+	EventNonEmpty = []string{
 		"actor", "role", "summary",
 	}
 )
 
-var CanonicalTypeEnum = map[string]struct{}{
+var TicketTypeEnum = map[string]struct{}{
 	"epic":  {},
 	"plan":  {},
 	"issue": {},
@@ -105,7 +105,7 @@ var CanonicalTypeEnum = map[string]struct{}{
 	"ops":   {},
 }
 
-var CanonicalStateEnum = map[string]struct{}{
+var StateEnum = map[string]struct{}{
 	"backlog": {},
 	"ready":   {},
 	"doing":   {},
@@ -116,7 +116,7 @@ var CanonicalStateEnum = map[string]struct{}{
 	"dropped": {},
 }
 
-var CanonicalAreaEnum = map[string]struct{}{
+var AreaEnum = map[string]struct{}{
 	"frontend": {},
 	"backend":  {},
 	"runtime":  {},
@@ -128,7 +128,7 @@ var CanonicalAreaEnum = map[string]struct{}{
 	"ops":      {},
 }
 
-var CanonicalEventRoleEnum = map[string]struct{}{
+var EventRoleEnum = map[string]struct{}{
 	"planner":     {},
 	"implementer": {},
 	"auditor":     {},
@@ -136,7 +136,7 @@ var CanonicalEventRoleEnum = map[string]struct{}{
 	"reviewer":    {},
 }
 
-var CanonicalEventResultEnum = map[string]struct{}{
+var EventResultEnum = map[string]struct{}{
 	"pass":              {},
 	"changes_requested": {},
 	"cancelled":         {},

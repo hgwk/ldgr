@@ -149,10 +149,10 @@ func ensureGoal(path string) error {
 
 func ensureGitignore(path string) error {
 	required := []string{
-		"ledger/.lock",
-		"ledger/.backup/",
-		"ledger/import-errors.jsonl",
-		"ledger/legacy/",
+		".ldgr/lock",
+		".ldgr/backups/",
+		".ldgr/import-errors.jsonl",
+		".ldgr/legacy/",
 	}
 	existing := ""
 	if data, err := os.ReadFile(path); err == nil {

@@ -19,27 +19,28 @@ Apply when you're satisfied:
 
 ```bash
 ldgr import legacy --target . --apply
-# optional: move legacy sources under ledger/legacy/
+# optional: move legacy sources under .ldgr/legacy/
 ldgr import legacy --target . --apply --archive-originals
 ```
 
 `--apply` is idempotent. Running it twice produces "no changes". Ghost rows
 (empty `ticket`/`task`) are preserved and neutralized by a companion
 `invalidates_n` row so `ldgr verify` reports them as warnings, not fails.
-Parse errors are preserved in `ledger/import-errors.jsonl`.
+Parse errors are preserved in `.ldgr/import-errors.jsonl`.
+`ldgr verify` also surfaces these root legacy files so old layouts are handled
+by ldgr itself rather than a separate checker.
 
-## Schema v1 migration
+## State model migration
 
-Historical legacy rows remain readable. Canonical schema v1 is the cleaned-up ticket
-vocabulary:
+Historical status-shaped rows remain readable. The current ticket vocabulary is:
 
 ```text
 Ready    Doing    Review    Done
 Backlog  Blocked  Rework    Dropped
 ```
 
-New v1 ticket rows use `id`, `state`, `type`, `area`, `title`, `owner`, and an
-`event` object. New v1 worklog rows keep their narrow meaning: one completed
+Ticket rows use `id`, `state`, `type`, `area`, `title`, `owner`, and an
+`event` object. Worklog rows keep their narrow meaning: one completed
 delivery after an audit-pass `done` ticket. They do not carry lifecycle state.
 
 To preview the rewrite:
@@ -58,7 +59,7 @@ ldgr migrate legacy-to-v1 --target . --apply
 `--apply` rewrites `ledger/config.json`, `ledger/tickets.jsonl`, and
 `ledger/worklog.jsonl`, records a `historical_baseline` in
 `ledger/config.json`, and always creates a backup under
-`ledger/.backup/legacy-to-v1-<timestamp>/`. `goal.json` is left semantically
+`.ldgr/backups/legacy-to-v1-<timestamp>/`. `goal.json` is left semantically
 unchanged. Weak historical `done` and `changes_requested` rows are mapped back to
 `review` instead of being promoted into fake audit-pass records; ghost rows are
 kept with synthetic IDs and surfaced in the warning summary.
@@ -71,8 +72,8 @@ Common warning codes:
   metadata, so it remains review work.
 - `GHOST_TICKET_SYNTHESIZED` / `GHOST_WORKLOG_SYNTHESIZED`: an empty semantic
   row was preserved with a synthetic id instead of being dropped.
-- `AREA_DEFAULTED`, `TYPE_DEFAULTED`, `ROLE_DEFAULTED`: v1 data lacked the
-  corresponding v1 classifier; review samples before applying.
+- `AREA_DEFAULTED`, `TYPE_DEFAULTED`, `ROLE_DEFAULTED`: source data lacked the
+  corresponding classifier; review samples before applying.
 - `UNMAPPED_FIELD`: source data had extra fields preserved under `extra` /
   `event.extra`.
 
@@ -84,7 +85,7 @@ ldgr view --target .
 ```
 
 Rollback is manual: copy the backed-up files from
-`ledger/.backup/legacy-to-v1-<timestamp>/ledger/` back over `ledger/config.json`,
+`.ldgr/backups/legacy-to-v1-<timestamp>/ledger/` back over `ledger/config.json`,
 `ledger/tickets.jsonl`, and `ledger/worklog.jsonl`.
 
 For production or active multi-agent repos, use this order:
@@ -105,12 +106,13 @@ ldgr view --target .
 `ldgr view` runs a read-only HTTP dashboard on `localhost`:
 
 ```bash
-ldgr view                 # serve http://127.0.0.1:3030, all registered projects
+ldgr view                 # serve and open http://127.0.0.1:3030, all registered projects
 ldgr view --port 8080     # custom port
 ldgr view --target .      # single-project mode for the current directory
+ldgr view --no-open       # serve without opening a browser
 ```
 
-The dashboard polls every 5 seconds. Closing the terminal stops the server.
+The dashboard opens in your default browser and polls every 5 seconds. Closing the terminal stops the server.
 Ghost rows are hidden from the ticket tree and surfaced in the "Invalidated rows"
 insight card.
 
@@ -131,13 +133,13 @@ ldgr suggest commit  --ticket BUG-101        # Conventional Commit + PR/verifica
 
 The lifecycle is **enforced**, not advisory:
 
-- Implementation moves through `open → in_progress → audit_ready` only.
-- `audit_ready` requires non-empty `evidence`.
-- Closing a ticket requires a separate audit row: `role=audit`, `status=done`,
-  `audit_result=pass`, non-empty `evidence`, and `reviewed_n` pointing at the
-  audit_ready row.
-- `changes_requested` is also an audit row: `role=audit`,
-  `audit_result=changes_requested`, `audit_notes`, and `reviewed_n`.
+- Implementation moves through `ready → doing → review`.
+- `review` requires non-empty `evidence`.
+- Closing a ticket requires a separate audit event: `event.role=auditor`,
+  `state=done`, `event.result=pass`, non-empty `evidence`, and `reviewed_n`
+  pointing at the review row.
+- Requested changes are also an audit event: `state=rework`,
+  `event.result=changes_requested`, `event.notes`, and `reviewed_n`.
 - `ldgr worklog add` is gated — it requires the ticket's latest row to be
   audit-pass done. Pre-audit calls are rejected.
 - `ldgr suggest commit` refuses to scaffold before audit pass; use
@@ -152,13 +154,9 @@ ldgr audit request-changes --ticket BUG-101 --notes "missing regression coverage
 ```
 
 `audit pass` and `audit request-changes` auto-set `reviewed_n` from the latest
-`audit_ready` row.
-
-For schema v1 projects, the same shortcuts use the v1 lifecycle:
-`ready → doing → review → done|rework`. `ticket ready` writes `state=review`,
-`audit pass` writes `state=done` with `event.result=pass`, and
-`audit request-changes` writes `state=rework` with
-`event.result=changes_requested`.
+`review` row. `ticket ready` writes `state=review`, `audit pass` writes
+`state=done` with `event.result=pass`, and `audit request-changes` writes
+`state=rework` with `event.result=changes_requested`.
 
 If you maintain a ledger with older rows, `ldgr verify` may report historical
 compatibility warnings: old rows are being checked against the current
@@ -170,7 +168,7 @@ ldgr verify --target . --new-only --since-ticket-n 482 --since-worklog-n 321
 ```
 
 Use `ldgr verify --strict` only when you've intentionally cleaned or accepted all
-historical compatibility warnings. A canonical schema v1 rewrite can still retain
+historical compatibility warnings. A state-model rewrite can still retain
 historical lifecycle/worklog violations behind the baseline.
 
 ## Install
@@ -209,13 +207,13 @@ tap is not published yet; until then, use `go install` or the release tarball.
 ldgr init                                # seed ledger/* in the current repo
 ldgr init --language ko                  # optional: ledger free-text fields use Korean
 ldgr hooks install                       # pre-commit verify
-ldgr instructions install                # AGENTS.md / CLAUDE.md pointer + ledger-owned bodies
+ldgr instructions install                # AGENTS.md / CLAUDE.md pointer + home-local body
 ldgr view --target .                     # dashboard for this project only
 ```
 
 `ldgr init` and `ldgr instructions install` write the authoritative instruction
-body to `ledger/instructions/ldgr.md` and add a top-of-file
-`@ledger/instructions/ldgr.md` reference to both `AGENTS.md` and `CLAUDE.md`,
+body to `~/.ldgr/operating-guide.md` and add a top-of-file absolute
+`@.../.ldgr/operating-guide.md` reference to both `AGENTS.md` and `CLAUDE.md`,
 creating those files when missing.
 
 `--language` sets `ledger/config.json` → `writing_language`. Agents should use

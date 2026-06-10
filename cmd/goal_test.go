@@ -31,7 +31,7 @@ func TestGoalSet_OverwritesGoalJSON(t *testing.T) {
 func TestGoalSet_LogFlagWritesWorklog(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
-	in := map[string]any{"summary": "canonical v1"}
+	in := map[string]any{"summary": "state-model"}
 	body, _ := json.Marshal(in)
 	errb := &bytes.Buffer{}
 	if code := RunGoalCLI([]string{"set", "--target", target, "--json", "@-", "--log"}, bytes.NewReader(body), &bytes.Buffer{}, errb); code != 0 {

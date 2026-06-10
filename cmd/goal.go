@@ -96,7 +96,7 @@ func runGoalSet(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		if _, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), filepath.Join(dir, "ledger", ".lock"), ledger.Row(row)); err != nil {
+		if _, err := ledger.Append(filepath.Join(dir, "ledger", "worklog.jsonl"), ldgrLockPath(dir), ledger.Row(row)); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}

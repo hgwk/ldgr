@@ -50,9 +50,12 @@ func targets() []instructionTarget {
 	}
 }
 
-const instructionBodyRel = "ledger/instructions/ldgr.md"
+const instructionBodyRel = ".ldgr/instructions.md"
 
 var legacyBodyRels = []string{
+	instructionBodyRel,
+	".ldgr/operating-guide.md",
+	"ledger/instructions/ldgr.md",
 	"ledger/instructions/AGENTS.ldgr.md",
 	"ledger/instructions/CLAUDE.ldgr.md",
 }
@@ -66,7 +69,7 @@ func RunInstructionsCLI(args []string, stdout, stderr io.Writer) int {
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("instructions " + sub)
 	target := fs.String("target", "", "")
-	keepBodies := fs.Bool("keep-bodies", false, "uninstall only: leave ledger/instructions/ldgr.md")
+	keepBodies := fs.Bool("keep-bodies", false, "uninstall only: leave local legacy instruction bodies")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -92,7 +95,10 @@ func runInstructionsInstall(dir string, stdout, stderr io.Writer) int {
 }
 
 func installInstructions(dir string) error {
-	bodyPath := filepath.Join(dir, instructionBodyRel)
+	bodyPath, err := instructionBodyPath()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(bodyPath), 0o755); err != nil {
 		return err
 	}
@@ -111,7 +117,7 @@ func installInstructions(dir string) error {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-		updated := upsertPointer(current, instructionBodyRel)
+		updated := upsertPointer(current, bodyPath)
 		if updated == current {
 			continue
 		}
@@ -139,17 +145,29 @@ func runInstructionsUninstall(dir string, keepBodies bool, stdout, stderr io.Wri
 			}
 		}
 		if !keepBodies {
-			_ = os.Remove(filepath.Join(dir, instructionBodyRel))
 			for _, oldRel := range legacyBodyRels {
 				_ = os.Remove(filepath.Join(dir, oldRel))
 			}
 		}
 	}
 	if !keepBodies {
+		_ = os.Remove(filepath.Join(dir, ".ldgr"))
 		_ = os.Remove(filepath.Join(dir, "ledger", "instructions"))
 	}
 	fmt.Fprintln(stdout, "instructions uninstalled")
 	return 0
+}
+
+func instructionBodyPath() (string, error) {
+	home := os.Getenv("LDGR_HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		home = filepath.Join(h, ".ldgr")
+	}
+	return filepath.Join(home, "operating-guide.md"), nil
 }
 
 func upsertPointer(current, bodyRel string) string {
@@ -213,7 +231,7 @@ func removePointerPrelude(content, bodyRel string) (string, bool) {
 
 func removeKnownPointerPreludes(content string) string {
 	out := content
-	for _, bodyRel := range append([]string{instructionBodyRel}, legacyBodyRels...) {
+	for _, bodyRel := range knownPointerRefs() {
 		var removed bool
 		out, removed = removePointerPrelude(out, bodyRel)
 		if removed {
@@ -230,6 +248,15 @@ func hasAnyLegacyPointerPrelude(content string) bool {
 		}
 	}
 	return false
+}
+
+func knownPointerRefs() []string {
+	refs := []string{}
+	if bodyPath, err := instructionBodyPath(); err == nil {
+		refs = append(refs, bodyPath)
+	}
+	refs = append(refs, legacyBodyRels...)
+	return refs
 }
 
 func pointerPreludePosition(content, bodyRel string) int {

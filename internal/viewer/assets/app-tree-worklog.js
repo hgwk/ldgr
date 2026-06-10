@@ -1,0 +1,273 @@
+/* Tree */
+async function renderTree(root, background) {
+  const t = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/tickets");
+  if (shouldSkipRender("tree", t, background)) return;
+  root.innerHTML = "";
+  root.appendChild(el("div", { class: "page-title", text: "Tickets" }));
+  appendTicketViewSwitch(root);
+
+  // Flatten the buckets into one list of latest rows.
+  const all = [];
+  for (const bucket of (t.tree || [])) {
+    for (const row of (bucket.tickets || [])) {
+      all.push({ row, parent: bucket.parent });
+    }
+  }
+	  if (all.length === 0) {
+    root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
+    return;
+	  }
+  const treeParents = uniqueSorted(all.map((it) => it.row.parent_ticket || it.parent));
+  const treeBar = el("div", { class: "kanban-bar" });
+  treeBar.appendChild(selectControl(["", ...treeParents], state.treeFilter.parent, "All parents", (v) => { state.treeFilter.parent = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "plan", "issue", "task", "audit", "ops"].map(v => ({ value: v, text: v ? "Kind " + v : "" })), state.treeFilter.kind, "All kinds", (v) => { state.treeFilter.kind = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.treeFilter.priority, "All priorities", (v) => { state.treeFilter.priority = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"].map(v => ({ value: v, text: v ? "Status " + v : "" })), state.treeFilter.status, "All statuses", (v) => { state.treeFilter.status = v; syncURL(); loadPage(); }));
+  root.appendChild(treeBar);
+
+  const byId = new Map();
+  for (const item of all) byId.set(item.row.ticket, item);
+  const childrenOf = new Map();
+  const workstreamBuckets = new Map();
+  for (const item of all) {
+    const p = item.row.parent_ticket || item.parent || "—";
+    if (byId.has(p)) {
+      // parent is itself a ticket id → nested.
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p).push(item);
+    } else {
+      // parent is a workstream label.
+      if (!workstreamBuckets.has(p)) workstreamBuckets.set(p, []);
+      workstreamBuckets.get(p).push(item);
+    }
+  }
+  const visible = computeVisibleTreeTickets(all, byId);
+
+  // A ticket that has a ticket-parent shouldn't ALSO appear at the top of its
+  // workstream bucket — exclude such tickets from workstream listings.
+  for (const [bucket, items] of workstreamBuckets) {
+    workstreamBuckets.set(bucket, items.filter((it) => visible.has(it.row.ticket) && !byId.has(it.row.parent_ticket)));
+  }
+
+  // Render each workstream bucket as a section drawn as a git-style commit
+  // graph: every ticket is a coloured node on a lane, connected to its parent
+  // and siblings by rails.
+  const sortedBuckets = [...workstreamBuckets.keys()].sort();
+  for (const parent of sortedBuckets) {
+    const items = workstreamBuckets.get(parent);
+    if (items.length === 0) continue;
+    root.appendChild(el("div", { class: "section-heading" }, el("h3", { text: parent })));
+    const list = el("div", { class: "tree-list tree-graph" });
+    // Flatten this bucket's visible forest into DFS order, attaching the lane
+    // metadata each row needs to draw its rails.
+    const roots = [...items].sort((a, b) => (b.row.ts || "").localeCompare(a.row.ts || ""));
+    const rows = [];
+    roots.forEach((item, idx) => {
+      flattenTree(item, 0, idx === roots.length - 1, idx === 0, [], childrenOf, visible, rows);
+    });
+    for (const r of rows) list.appendChild(renderGraphRow(r));
+    root.appendChild(list);
+  }
+}
+
+// flattenTree walks the visible subtree rooted at `item` in depth-first order,
+// pushing one descriptor per node into `out`. ancMore[j] records whether the
+// ancestor at depth j has a later sibling, so a vertical rail keeps running
+// through this row at lane j.
+function flattenTree(item, depth, isLast, isFirst, ancMore, childrenOf, visible, out) {
+  const kids = (childrenOf.get(item.row.ticket) || [])
+    .filter((k) => visible.has(k.row.ticket))
+    .sort((a, b) => (b.row.ts || "").localeCompare(a.row.ts || ""));
+  out.push({ row: item.row, depth, isLast, isFirst, ancMore: ancMore.slice(), hasKids: kids.length > 0 });
+  const childAnc = ancMore.slice();
+  childAnc[depth] = !isLast; // this node's rail continues iff it has a later sibling
+  kids.forEach((k, idx) => {
+    flattenTree(k, depth + 1, idx === kids.length - 1, false, childAnc, childrenOf, visible, out);
+  });
+}
+
+const TREE_LANE_W = 18, TREE_ROW_H = 28, TREE_DOT_R = 4;
+
+function renderGraphRow(r) {
+  const d = r.depth, mid = TREE_ROW_H / 2;
+  const width = (d + 1) * TREE_LANE_W;
+  const cx = (i) => i * TREE_LANE_W + TREE_LANE_W / 2;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("class", "tree-graph-gutter");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", TREE_ROW_H);
+  svg.setAttribute("viewBox", "0 0 " + width + " " + TREE_ROW_H);
+  const line = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(svgNS, "line");
+    l.setAttribute("x1", x1); l.setAttribute("y1", y1);
+    l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+    l.setAttribute("class", "tree-graph-line");
+    svg.appendChild(l);
+  };
+  // Rails of higher ancestors passing straight through this row.
+  for (let j = 0; j < d - 1; j++) {
+    if (r.ancMore[j]) line(cx(j), 0, cx(j), TREE_ROW_H);
+  }
+  if (d >= 1) {
+    // Elbow from the parent lane into this node's lane.
+    line(cx(d - 1), 0, cx(d - 1), mid);
+    if (!r.isLast) line(cx(d - 1), mid, cx(d - 1), TREE_ROW_H);
+    line(cx(d - 1), mid, cx(d), mid);
+  } else {
+    // Top-level node: rails connect roots down the trunk lane.
+    if (!r.isFirst) line(cx(0), 0, cx(0), mid);
+    if (!r.isLast) line(cx(0), mid, cx(0), TREE_ROW_H);
+  }
+  if (r.hasKids) line(cx(d), mid, cx(d), TREE_ROW_H); // down to first child
+  const dot = document.createElementNS(svgNS, "circle");
+  dot.setAttribute("cx", cx(d));
+  dot.setAttribute("cy", mid);
+  dot.setAttribute("r", TREE_DOT_R);
+  dot.setAttribute("class", "tree-graph-dot status-" + (r.row.status || "open"));
+  svg.appendChild(dot);
+
+  const head = el("div", { class: "tree-node-head", onclick: () => openDrawer(r.row.ticket) });
+  head.appendChild(el("span", { class: "mono", text: r.row.ticket }));
+  if (r.row.priority) head.appendChild(el("span", { class: "badge badge-prio badge-prio-" + (r.row.priority || "").toLowerCase(), text: r.row.priority }));
+  if (r.row.kind && r.row.kind !== "task") head.appendChild(el("span", { class: "badge", text: r.row.kind }));
+  head.appendChild(el("span", { class: "pill " + (r.row.status || ""), text: r.row.status || "" }));
+  head.appendChild(el("span", { class: "tree-task", text: r.row.task || "" }));
+  head.appendChild(el("span", { class: "tree-ts muted", text: fmtTS(r.row.ts) }));
+
+  const rowEl = el("div", { class: "tree-graph-row" });
+  rowEl.appendChild(svg);
+  rowEl.appendChild(head);
+  return rowEl;
+}
+
+function computeVisibleTreeTickets(items, byId) {
+  const visible = new Set();
+  const hasFilter = state.treeFilter.parent || state.treeFilter.kind || state.treeFilter.priority || state.treeFilter.status;
+  for (const item of items) {
+    if (!hasFilter || treeItemMatches(item)) markVisibleWithAncestors(item, byId, visible);
+  }
+  return visible;
+}
+
+function treeItemMatches(item) {
+  if (state.treeFilter.parent && (item.row.parent_ticket || item.parent || "") !== state.treeFilter.parent) return false;
+  if (state.treeFilter.kind && (item.row.kind || "") !== state.treeFilter.kind) return false;
+  if (state.treeFilter.priority && (item.row.priority || "") !== state.treeFilter.priority) return false;
+  if (state.treeFilter.status && (item.row.status || "") !== state.treeFilter.status) return false;
+  return true;
+}
+
+function markVisibleWithAncestors(item, byId, visible) {
+  let cur = item;
+  while (cur && cur.row && cur.row.ticket && !visible.has(cur.row.ticket)) {
+    visible.add(cur.row.ticket);
+    cur = byId.get(cur.row.parent_ticket);
+  }
+}
+
+/* Worklog */
+async function renderWorklog(root, background) {
+  const w = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/worklog");
+  if (shouldSkipRender("worklog", w, background)) return;
+  root.innerHTML = "";
+  root.appendChild(el("div", { class: "page-title", text: "Worklog" }));
+  const allRows = w.rows || [];
+  const agents = uniqueSorted(allRows.map((r) => r.agent));
+  const bar = el("div", { class: "kanban-bar" });
+  bar.appendChild(textControl(state.worklogFilter.q, "Search ticket/task/result", (v) => { state.worklogFilter.q = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...agents], state.worklogFilter.agent, "All agents", (v) => { state.worklogFilter.agent = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{ value: "newest", text: "Newest first" }, { value: "oldest", text: "Oldest first" }], state.worklogSort, "Newest first", (v) => { state.worklogSort = v; syncURL(); loadPage(); }));
+  root.appendChild(bar);
+  let rows = allRows.filter((r) => {
+    if (state.worklogFilter.agent && (r.agent || "") !== state.worklogFilter.agent) return false;
+    const q = state.worklogFilter.q.trim().toLowerCase();
+    if (q) {
+      const hay = [r.ticket, r.task, r.result].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (state.worklogSort === "oldest") rows = rows.slice().sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
+  if (rows.length === 0) {
+    root.appendChild(el("div", { class: "state-empty", text: "No worklog entries." }));
+    return;
+  }
+  // Render as a day-grouped activity timeline. Cap the rendered count, but
+  // surface the truncation instead of silently dropping rows.
+  const MAX = 150;
+  const truncated = rows.length > MAX;
+  const shown = rows.slice(0, MAX);
+  const todayKey = new Date().toISOString().substring(0, 10);
+  const yesterdayKey = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const dayCounts = {};
+  for (const r of shown) {
+    const k = (r.ts || "").substring(0, 10) || "—";
+    dayCounts[k] = (dayCounts[k] || 0) + 1;
+  }
+
+  const feed = el("div", { class: "wl-feed" });
+  let curDay = null, entries = null;
+  for (const r of shown) {
+    const dayKey = (r.ts || "").substring(0, 10) || "—";
+    if (dayKey !== curDay) {
+      curDay = dayKey;
+      const label = dayKey === todayKey ? "Today" : dayKey === yesterdayKey ? "Yesterday" : dayKey;
+      feed.appendChild(el("div", { class: "wl-day-head" },
+        el("span", { text: label }),
+        el("span", { class: "muted", text: " · " + dayCounts[dayKey] })));
+      entries = el("div", { class: "wl-entries" });
+      feed.appendChild(entries);
+    }
+    entries.appendChild(renderWorklogEntry(r));
+  }
+  root.appendChild(feed);
+  if (truncated) {
+    root.appendChild(el("div", { class: "wl-more muted", text: "Showing " + MAX + " of " + rows.length + " entries — narrow with search or the agent filter." }));
+  }
+}
+
+// hhmm renders the UTC HH:MM portion of a timestamp (matches fmtTS's clock).
+function hhmm(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().substring(11, 16);
+}
+
+// agentHue derives a stable hue (0-359) from an agent name so each agent gets
+// a consistent chip colour without a fixed palette.
+function agentHue(name) {
+  let h = 0;
+  const s = name || "";
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function renderWorklogEntry(r) {
+  const entry = el("div", { class: "wl-entry" + (r.ticket ? " wl-clickable" : "") });
+  if (r.ticket) entry.addEventListener("click", () => openDrawer(r.ticket));
+  entry.appendChild(el("span", { class: "wl-dot" }));
+  const body = el("div", { class: "wl-body" });
+  const meta = el("div", { class: "wl-meta" });
+  meta.appendChild(el("span", { class: "wl-time", text: hhmm(r.ts), title: fmtTS(r.ts) }));
+  if (r.agent) {
+    const hue = agentHue(r.agent);
+    const chip = el("span", { class: "wl-agent", style: "color: oklch(0.55 0.13 " + hue + "); border-color: oklch(0.7 0.1 " + hue + ")", text: r.agent });
+    chip.addEventListener("click", (e) => { e.stopPropagation(); state.worklogFilter.agent = r.agent; syncURL(); loadPage(); });
+    meta.appendChild(chip);
+  }
+  if (r.ticket) meta.appendChild(el("span", { class: "mono wl-ticket", text: r.ticket }));
+  body.appendChild(meta);
+  const text = el("div", { class: "wl-text" });
+  text.appendChild(el("span", { class: "wl-task", text: r.task || "" }));
+  if (r.result) {
+    text.appendChild(el("span", { class: "wl-arrow muted", text: " → " }));
+    text.appendChild(el("span", { class: "wl-result", text: r.result }));
+  }
+  body.appendChild(text);
+  entry.appendChild(body);
+  return entry;
+}
+
+/* Insights */

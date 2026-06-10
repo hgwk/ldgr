@@ -170,7 +170,7 @@ func renderPlan(w io.Writer, dir string, plan legacy.Plan, force bool) {
 		fmt.Fprintln(w)
 	}
 	fmt.Fprintln(w, "Original files:")
-	fmt.Fprintln(w, "  preserve in place (use --archive-originals to move them under ledger/legacy/)")
+	fmt.Fprintln(w, "  preserve in place (use --archive-originals to move them under .ldgr/legacy/)")
 	if !force && shrinkingTarget(plan) {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "WARNING: existing target has more rows than the import would produce. --apply requires --force.")

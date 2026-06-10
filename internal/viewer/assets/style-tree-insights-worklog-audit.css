@@ -1,0 +1,150 @@
+.kanban-bar {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
+}
+.kanban-bar select,
+.kanban-bar input {
+  font: inherit;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+}
+.kanban-bar input { min-width: 220px; }
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.view-switch button {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  padding: 4px 10px;
+  min-width: 72px;
+  cursor: pointer;
+}
+.view-switch button:last-child { border-right: 0; }
+.view-switch button:hover { background: var(--surface-2); color: var(--fg); }
+.view-switch button.active {
+  background: var(--fg);
+  color: var(--bg);
+}
+.view-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.badge-prio { font-weight: 600; }
+.badge-prio-p0 { color: white; background: #dc2626; border-color: #dc2626; }
+.badge-prio-p1 { color: white; background: #ea580c; border-color: #ea580c; }
+.badge-prio-p2 { color: var(--muted); }
+.badge-prio-p3 { color: var(--muted); opacity: 0.7; }
+
+/* Tree (git-style commit graph) */
+.tree-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); margin-bottom: var(--space-4); }
+.tree-graph-row { display: flex; align-items: stretch; }
+.tree-graph-gutter { flex: none; display: block; }
+.tree-graph-line { stroke: var(--border); stroke-width: 1.5; }
+.tree-graph-dot { fill: var(--muted); stroke: var(--surface); stroke-width: 2; }
+.tree-graph-dot.status-open { fill: var(--status-open); }
+.tree-graph-dot.status-in_progress { fill: var(--status-in_progress); }
+.tree-graph-dot.status-blocked { fill: var(--status-blocked); }
+.tree-graph-dot.status-changes_requested { fill: var(--status-changes_requested); }
+.tree-graph-dot.status-audit_ready { fill: var(--status-audit_ready); }
+.tree-graph-dot.status-done { fill: var(--status-done); }
+.tree-graph-dot.status-cancelled { fill: var(--status-cancelled); }
+.tree-node-head {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, auto) auto auto 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tree-node-head:hover { background: var(--surface-2); }
+.tree-task { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-ts { font-size: 11px; }
+
+/* Insights — summary cards + drill-down */
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.insight-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.insight-card:hover { background: var(--surface-2); }
+.insight-card.empty { cursor: default; opacity: 0.55; }
+.insight-card.empty:hover { background: var(--surface); }
+.insight-card.active { background: var(--surface-2); border-color: var(--border-strong); }
+.insight-card-title { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.insight-card-count { font-size: 26px; font-weight: 600; line-height: 1; color: var(--fg); }
+.insight-dot {
+  position: absolute; top: var(--space-3); right: var(--space-3);
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1.5px solid var(--muted); background: transparent;
+}
+.insight-dot.on { border: none; }
+.insight-card.sev-high { border-left-color: var(--status-blocked); }
+.insight-card.sev-warn { border-left-color: var(--status-changes_requested); }
+.insight-card.sev-good { border-left-color: var(--status-done); }
+.insight-card.sev-info { border-left-color: var(--status-in_progress); }
+.insight-card.sev-high .insight-dot.on { background: var(--status-blocked); }
+.insight-card.sev-warn .insight-dot.on { background: var(--status-changes_requested); }
+.insight-card.sev-good .insight-dot.on { background: var(--status-done); }
+.insight-card.sev-info .insight-dot.on { background: var(--status-in_progress); }
+
+.insight-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); }
+.insight-row {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) auto auto 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 5px var(--space-2);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.insight-row:hover { background: var(--surface-2); }
+.insight-row-plain { grid-template-columns: 1fr; cursor: default; }
+.insight-row-plain:hover { background: transparent; }
+.insight-task { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insight-metric { font-size: 11px; white-space: nowrap; }
+
+/* Worklog — activity timeline */
+.wl-feed { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
+.wl-day-head { font-size: 12px; font-weight: 600; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
+.wl-day-head:first-child { margin-top: 0; }
+.wl-entries { position: relative; margin-left: 4px; padding-left: 18px; border-left: 2px solid var(--border); }
+.wl-entry { position: relative; padding: 5px var(--space-2) 7px; border-radius: 4px; }
+.wl-clickable { cursor: pointer; }
+.wl-clickable:hover { background: var(--surface-2); }
+.wl-dot { position: absolute; left: -24px; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+.wl-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.wl-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wl-agent { font-size: 11px; padding: 0 7px; border: 1px solid; border-radius: 999px; cursor: pointer; line-height: 1.5; }
+.wl-ticket { font-size: 12px; }
+.wl-text { margin-top: 2px; font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.wl-result { color: var(--muted); }
+.wl-more { margin-top: var(--space-3); font-size: 12px; text-align: center; }
+
+/* Audit queue */
+.audit-subtitle { margin: 4px 0 12px; font-size: 12px; }
+.audit-empty { padding: 24px; text-align: center; }
+.audit-table tr.audit-row { cursor: pointer; }
+.audit-table tr.audit-row:hover { background: var(--surface-2); }
+.audit-task { max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

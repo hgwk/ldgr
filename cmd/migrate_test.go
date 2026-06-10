@@ -76,7 +76,7 @@ func TestMigrateLegacyToV1_ApplyRewritesAndVerifies(t *testing.T) {
 	if raw.HistoricalBaseline.Tickets != 2 || raw.HistoricalBaseline.Worklog != 1 {
 		t.Fatalf("expected migration baseline 2/1, got %+v", raw.HistoricalBaseline)
 	}
-	backupEntries, err := os.ReadDir(filepath.Join(target, "ledger", ".backup"))
+	backupEntries, err := os.ReadDir(filepath.Join(target, ".ldgr", "backups"))
 	if err != nil {
 		t.Fatalf("backup dir missing: %v", err)
 	}
@@ -186,8 +186,8 @@ func TestMigrateLegacyToV1_SecondApplyIsNoop(t *testing.T) {
 	}
 }
 
-func TestMigrateLegacyToV1_ConvertsLegacyRowsAppendedAfterCanonicalMigration(t *testing.T) {
-	target := seedCanonicalV1Ledger(t)
+func TestMigrateLegacyToV1_ConvertsLegacyRowsAppendedAfterStateMigration(t *testing.T) {
+	target := seedStateLedger(t)
 	if err := appendFile(filepath.Join(target, "ledger", "tickets.jsonl"), `{"n":2,"ts":"2026-05-14T10:03:00Z","ticket":"T-2","parent_ticket":"ROOT","agent":"codex","role":"ops","status":"done","task":"legacy append","scope":"repo","paths":[],"blocked_by":[],"branch":""}`+"\n"); err != nil {
 		t.Fatalf("append ticket: %v", err)
 	}
@@ -204,17 +204,17 @@ func TestMigrateLegacyToV1_ConvertsLegacyRowsAppendedAfterCanonicalMigration(t *
 		t.Fatalf("read tickets: %v", err)
 	}
 	if tickets[0]["id"] != "T-1" || tickets[0]["state"] != "doing" {
-		t.Fatalf("canonical row should be preserved, got %+v", tickets[0])
+		t.Fatalf("state row should be preserved, got %+v", tickets[0])
 	}
 	if tickets[1]["id"] != "T-2" || tickets[1]["state"] != "review" {
-		t.Fatalf("legacy appended row should be converted to canonical review, got %+v", tickets[1])
+		t.Fatalf("legacy appended row should be converted to state review, got %+v", tickets[1])
 	}
 	worklogs, err := ledger.ReadRows(filepath.Join(target, "ledger", "worklog.jsonl"))
 	if err != nil {
 		t.Fatalf("read worklog: %v", err)
 	}
-	if worklogs[0]["actor"] != "claude" || worklogs[0]["title"] != "canonical worklog" {
-		t.Fatalf("canonical worklog should be preserved, got %+v", worklogs[0])
+	if worklogs[0]["actor"] != "claude" || worklogs[0]["title"] != "state worklog" {
+		t.Fatalf("state worklog should be preserved, got %+v", worklogs[0])
 	}
 	if worklogs[1]["actor"] != "codex" || worklogs[1]["title"] != "legacy worklog" {
 		t.Fatalf("legacy worklog should be converted, got %+v", worklogs[1])
@@ -234,10 +234,10 @@ func TestMigrateLegacyToV1_ApplyVerifyFailureLeavesBackup(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected apply to report verify failure")
 	}
-	if !strings.Contains(stderr.String(), "verification failed") || !strings.Contains(stderr.String(), "ledger/.backup") {
+	if !strings.Contains(stderr.String(), "verification failed") || !strings.Contains(stderr.String(), ".ldgr/backups") {
 		t.Fatalf("stderr should explain failed verify and backup path, got: %s", stderr.String())
 	}
-	entries, err := os.ReadDir(filepath.Join(target, "ledger", ".backup"))
+	entries, err := os.ReadDir(filepath.Join(target, ".ldgr", "backups"))
 	if err != nil {
 		t.Fatalf("backup dir should exist: %v", err)
 	}
@@ -275,11 +275,11 @@ func seedV1LedgerWithTicket(t *testing.T, tickets, worklog string) string {
 	return target
 }
 
-func seedCanonicalV1Ledger(t *testing.T) string {
+func seedStateLedger(t *testing.T) string {
 	t.Helper()
 	target := seedV1LedgerWithTicket(t,
-		`{"acceptance":[],"area":"backend","blocked_by":[],"event":{"actor":"codex","notes":"","role":"implementer","summary":"canonical ticket"},"evidence":[],"id":"T-1","n":1,"owner":"codex","parent":"ROOT","priority":"P1","state":"doing","title":"canonical ticket","ts":"2026-05-14T10:00:00Z","type":"task"}`+"\n",
-		`{"actor":"claude","commands":[],"n":1,"notes":"","paths":[],"summary":"canonical delivery","ticket":"T-1","title":"canonical worklog","ts":"2026-05-14T10:02:00Z"}`+"\n")
+		`{"acceptance":[],"area":"backend","blocked_by":[],"event":{"actor":"codex","notes":"","role":"implementer","summary":"state ticket"},"evidence":[],"id":"T-1","n":1,"owner":"codex","parent":"ROOT","priority":"P1","state":"doing","title":"state ticket","ts":"2026-05-14T10:00:00Z","type":"task"}`+"\n",
+		`{"actor":"claude","commands":[],"n":1,"notes":"","paths":[],"summary":"state delivery","ticket":"T-1","title":"state worklog","ts":"2026-05-14T10:02:00Z"}`+"\n")
 	return target
 }
 

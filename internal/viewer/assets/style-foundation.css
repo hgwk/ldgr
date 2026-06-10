@@ -1,0 +1,204 @@
+:root {
+  /* shadcn/ui neutral preset — design tokens */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --shadcn-muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent-bg: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --shadcn-border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Backwards-compatible aliases used throughout the existing CSS */
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-2: var(--shadcn-muted);
+  --border: var(--shadcn-border);
+  --border-strong: var(--ring);
+  --fg: var(--foreground);
+  --muted: var(--muted-foreground);
+  --accent: var(--primary);
+
+  /* Lifecycle status palette — semantic, kept multi-hue on top of neutral chrome */
+  --status-open: oklch(0.556 0 0);
+  --status-in_progress: oklch(0.55 0.22 264);
+  --status-blocked: var(--destructive);
+  --status-changes_requested: oklch(0.65 0.16 60);
+  --status-audit_ready: oklch(0.55 0.25 295);
+  --status-done: oklch(0.6 0.17 155);
+  --status-cancelled: oklch(0.708 0 0);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --shadcn-muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent-bg: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --shadcn-border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* Dark-mode adjustments for lifecycle status (more saturated for legibility) */
+  --status-open: oklch(0.708 0 0);
+  --status-in_progress: oklch(0.7 0.2 264);
+  --status-changes_requested: oklch(0.75 0.16 60);
+  --status-audit_ready: oklch(0.7 0.22 295);
+  --status-done: oklch(0.72 0.18 155);
+  --status-cancelled: oklch(0.556 0 0);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100dvh; }
+body {
+  font: 13px/1.5 var(--font-mono);
+  color: var(--fg);
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Inline SVG icons */
+.icon { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; flex: 0 0 auto; }
+.theme-toggle .icon { width: 16px; height: 16px; vertical-align: 0; }
+#drawer .close .icon { width: 16px; height: 16px; vertical-align: 0; }
+.badge .icon, .kanban-owner-mark .icon { width: 11px; height: 11px; vertical-align: -1px; }
+.badge .icon + * { margin-left: 2px; }
+
+/* Theme toggle button in topbar */
+.theme-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover { background: var(--surface); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Sidebar */
+#sidebar {
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-right: 1px solid var(--sidebar-border);
+  padding: var(--space-4);
+  overflow-y: auto;
+  height: 100dvh;
+}
+#sidebar h1 {
+  font-size: 15px;
+  margin: 0 0 var(--space-4) 0;
+  letter-spacing: 0.02em;
+}
+#sidebar .nav-section {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  margin: var(--space-5) 0 var(--space-2) 0;
+}
+#sidebar .nav-section:first-of-type { margin-top: 0; }
+.nav-list { list-style: none; padding: 0; margin: 0; }
+.nav-list li {
+  padding: 6px var(--space-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+}
+.nav-list li:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.nav-list li.active { background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); }
+.nav-list .meta { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+.nav-list li.active .meta { color: rgba(255,255,255,0.85); }
+
+/* Main */
+#main {
+  padding: var(--space-5);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* When kanban is the page, let the board fill #page without page-level scroll */
+#page.page-kanban { overflow: hidden; }
+#page.page-kanban .kanban-board { flex: 1 1 auto; min-height: 0; max-height: none; }
+#topbar {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin-bottom: var(--space-4); padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+#topbar h2 { margin: 0; font-size: 18px; font-weight: 600; }
+#topbar .display { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+.page-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--space-3) 0;
+}
+

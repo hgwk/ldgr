@@ -30,7 +30,7 @@ func TestView_EndToEnd(t *testing.T) {
 
 	// Spawn the viewer.
 	port := freePort(t)
-	cmd := exec.Command(bin, "view", "--port", fmt.Sprint(port), "--target", work)
+	cmd := exec.Command(bin, "view", "--port", fmt.Sprint(port), "--target", work, "--no-open")
 	cmd.Env = env
 	stderr := &bytes.Buffer{}
 	cmd.Stderr = stderr

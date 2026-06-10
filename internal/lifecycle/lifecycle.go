@@ -25,19 +25,6 @@ func (v *Violation) Error() string {
 	return v.Message + "\n" + v.Hint
 }
 
-// Allowed state transitions: prevStatus -> set of allowed next statuses.
-// "" (empty) represents the initial state (nil prev) for new tickets.
-var allowedTransitions = map[string]map[string]bool{
-	"":                  {"open": true, "in_progress": true},
-	"open":              {"in_progress": true, "blocked": true, "cancelled": true},
-	"in_progress":       {"audit_ready": true, "blocked": true, "cancelled": true},
-	"blocked":           {"in_progress": true, "cancelled": true},
-	"audit_ready":       {"done": true, "changes_requested": true, "cancelled": true},
-	"changes_requested": {"in_progress": true, "open": true, "cancelled": true},
-	"done":              {}, // terminal
-	"cancelled":         {}, // terminal
-}
-
 // Validate checks the proposed new row against the previous latest row
 // for the same ticket. prev is nil iff this is the first row for the
 // ticket (ticket add).
@@ -69,8 +56,7 @@ func Validate(row ledger.Row, prev ledger.Row) *Violation {
 	if status != "" {
 		// Same-status carry-forward is always allowed (metadata-only updates).
 		if prevStatus != status {
-			allowed := allowedTransitions[prevStatus]
-			if !allowed[status] {
+			if !ledger.AllowsCompatStatusTransition(prevStatus, status) {
 				ticket := stringFromRow(row, "ticket")
 				prevStatusDisplay := orPlaceholder(prevStatus, "<new>")
 				return &Violation{

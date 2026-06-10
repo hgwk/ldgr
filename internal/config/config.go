@@ -18,6 +18,7 @@ type Config struct {
 	BranchConvention string   `json:"branch_convention"`
 	LogGoalChanges   bool     `json:"log_goal_changes"`
 	WritingLanguage  string   `json:"writing_language,omitempty"`
+	Status           string   `json:"status,omitempty"`
 }
 
 type rawConfig struct {
@@ -30,6 +31,7 @@ type rawConfig struct {
 	BranchConvention string          `json:"branch_convention"`
 	LogGoalChanges   bool            `json:"log_goal_changes"`
 	WritingLanguage  string          `json:"writing_language"`
+	Status           string          `json:"status"`
 }
 
 type legacyParent struct {
@@ -70,6 +72,7 @@ func Load(path string) (Config, error) {
 		BranchConvention: raw.BranchConvention,
 		LogGoalChanges:   raw.LogGoalChanges,
 		WritingLanguage:  raw.WritingLanguage,
+		Status:           raw.Status,
 	}
 	if c.SchemaVersion == 0 && raw.Version != 0 {
 		c.SchemaVersion = raw.Version
@@ -136,6 +139,28 @@ func PatchWritingLanguage(path, language string) error {
 		return err
 	}
 	raw["writing_language"] = value
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	return os.WriteFile(path, out, 0o644)
+}
+
+func PatchStatus(path, status string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	value, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	raw["status"] = value
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err

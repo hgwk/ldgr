@@ -92,7 +92,7 @@ func TestWorklogAdd_RejectsMissingTicket(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected rejection for missing ticket")
 	}
-	if !strings.Contains(stderr.String(), "ticket is required") {
+	if !strings.Contains(stderr.String(), `missing required field "ticket"`) {
 		t.Fatalf("stderr should explain missing ticket, got: %s", stderr.String())
 	}
 	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "worklog.jsonl"))
@@ -106,8 +106,8 @@ func TestWorklogAdd_RejectsUnknownTicket(t *testing.T) {
 	t.Setenv("LEDGER_AGENT", "codex")
 	in := map[string]any{
 		"ticket": "GHOST",
-		"task":   "x", "scope": "repo", "result": "?",
-		"paths": []any{}, "commands": []any{},
+		"title":  "x", "summary": "?",
+		"paths": []any{}, "commands": []any{}, "notes": "",
 	}
 	body, _ := json.Marshal(in)
 	var stderr bytes.Buffer
@@ -220,52 +220,52 @@ func TestWorklogAdd_RejectsWeakDone(t *testing.T) {
 	}
 }
 
-func TestWorklogAddCanonical_AcceptsAfterAuditPass(t *testing.T) {
-	target := mustInitCanonical(t)
+func TestWorklogAddState_AcceptsAfterAuditPass(t *testing.T) {
+	target := mustInitState(t)
 	t.Setenv("LEDGER_AGENT", "codex")
-	add := `{"id":"CANON-WL","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	add := `{"id":"STATE-WL","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
 	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
-	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"CANON-WL","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
-	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"CANON-WL","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-WL","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-WL","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
 	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
 	reviewN := int(rows[len(rows)-1]["n"].(float64))
-	pass := fmt.Sprintf(`{"id":"CANON-WL","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	pass := fmt.Sprintf(`{"id":"STATE-WL","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
 	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &bytes.Buffer{})
 
-	wl := `{"ticket":"CANON-WL","title":"build shipped","summary":"implemented","paths":["x.go"],"commands":["go test"]}`
+	wl := `{"ticket":"STATE-WL","title":"build shipped","summary":"implemented","paths":["x.go"],"commands":["go test"]}`
 	var stderr bytes.Buffer
 	if code := RunWorklogCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(wl), &bytes.Buffer{}, &stderr); code != 0 {
-		t.Fatalf("canonical v1 worklog add failed: %s", stderr.String())
+		t.Fatalf("state-model worklog add failed: %s", stderr.String())
 	}
 	worklogs, _ := ledger.ReadRows(filepath.Join(target, "ledger", "worklog.jsonl"))
 	if len(worklogs) != 1 || worklogs[0]["actor"] != "codex" {
-		t.Fatalf("unexpected canonical v1 worklog: %+v", worklogs)
+		t.Fatalf("unexpected state-model worklog: %+v", worklogs)
 	}
 	if _, ok := worklogs[0]["agent"]; ok {
-		t.Fatalf("canonical v1 worklog should not include v1 agent field: %+v", worklogs[0])
+		t.Fatalf("state-model worklog should not include v1 agent field: %+v", worklogs[0])
 	}
 	if _, ok := worklogs[0]["branch"]; ok {
-		t.Fatalf("canonical v1 worklog should not include v1 branch field: %+v", worklogs[0])
+		t.Fatalf("state-model worklog should not include v1 branch field: %+v", worklogs[0])
 	}
 	report, err := verify.Run(target)
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 	if len(report.Fails) != 0 || len(report.Warns) != 0 {
-		t.Fatalf("canonical v1 write path should verify cleanly, fails=%+v warns=%+v", report.Fails, report.Warns)
+		t.Fatalf("state-model write path should verify cleanly, fails=%+v warns=%+v", report.Fails, report.Warns)
 	}
 }
 
-func TestWorklogAddCanonical_RejectsBeforeDone(t *testing.T) {
-	target := mustInitCanonical(t)
+func TestWorklogAddState_RejectsBeforeDone(t *testing.T) {
+	target := mustInitState(t)
 	t.Setenv("LEDGER_AGENT", "codex")
-	add := `{"id":"CANON-WL-BAD","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	add := `{"id":"STATE-WL-BAD","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
 	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
-	wl := `{"ticket":"CANON-WL-BAD","title":"build shipped","summary":"implemented","paths":[],"commands":[]}`
+	wl := `{"ticket":"STATE-WL-BAD","title":"build shipped","summary":"implemented","paths":[],"commands":[]}`
 	var stderr bytes.Buffer
 	code := RunWorklogCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(wl), &bytes.Buffer{}, &stderr)
 	if code == 0 {
-		t.Fatalf("expected canonical v1 worklog rejection before done")
+		t.Fatalf("expected state-model worklog rejection before done")
 	}
 	if !strings.Contains(stderr.String(), "audit-pass done") {
 		t.Fatalf("stderr should mention audit-pass done, got: %s", stderr.String())

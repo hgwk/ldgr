@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/hgwk/ldgr/internal/verify"
 )
@@ -19,6 +20,11 @@ func RunVerifyCLI(args []string, stdout, stderr io.Writer) int {
 	summary := fs.Bool("summary", false, "")
 	verbose := fs.Bool("verbose", false, "")
 	newOnly := fs.Bool("new-only", false, "")
+	activeOnly := fs.Bool("active-only", false, "")
+	migrationReport := fs.Bool("migration-report", false, "")
+	compareLocal := fs.Bool("compare-local", false, "")
+	withHrns := fs.Bool("with-hrns", false, "")
+	codeSize := fs.Bool("code-size", false, "warn on source files over 300 lines")
 	sinceN := fs.Int("since-n", 0, "")
 	sinceTicketN := fs.Int("since-ticket-n", 0, "")
 	sinceWorklogN := fs.Int("since-worklog-n", 0, "")
@@ -38,7 +44,7 @@ func RunVerifyCLI(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := resolveTarget(*target)
-	rep, err := verify.RunStrict(dir, *strict)
+	rep, err := verify.RunWithOptions(dir, verify.Options{Strict: *strict, ActiveOnly: *activeOnly, CodeSize: *codeSize})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -63,6 +69,22 @@ func RunVerifyCLI(args []string, stdout, stderr io.Writer) int {
 	if *summary || *verbose {
 		printSummary(stdout, rep)
 	}
+	if *migrationReport {
+		sum, err := verify.BuildMigrationSummary(dir, rep)
+		if err != nil {
+			fmt.Fprintf(stderr, "migration report: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, verify.FormatMigrationSummary(sum))
+	}
+	if *compareLocal {
+		printLocalVerifierScripts(stdout, dir)
+	}
+	if *withHrns {
+		if code := runHrns(stdout, stderr, dir); code != 0 && len(rep.Fails) == 0 {
+			return code
+		}
+	}
 
 	if len(rep.Fails) > 0 {
 		return 1
@@ -71,6 +93,37 @@ func RunVerifyCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "ok")
 	}
 	return 0
+}
+
+func printLocalVerifierScripts(stdout io.Writer, dir string) {
+	scripts, err := verify.LocalVerifierScripts(dir)
+	if err != nil || len(scripts) == 0 {
+		fmt.Fprintln(stdout, "local verifier scripts: none")
+		return
+	}
+	fmt.Fprintln(stdout, "local verifier scripts:")
+	for _, script := range scripts {
+		marker := ""
+		if !strings.Contains(strings.ToLower(script), "ldgr verify") {
+			marker = " (project-local)"
+		}
+		fmt.Fprintf(stdout, "  %s%s\n", script, marker)
+	}
+}
+
+func runHrns(stdout, stderr io.Writer, dir string) int {
+	out, code, err := verify.RunHrns(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "hrns: %v\n", err)
+		return code
+	}
+	if strings.TrimSpace(out) != "" {
+		fmt.Fprint(stdout, out)
+		if !strings.HasSuffix(out, "\n") {
+			fmt.Fprintln(stdout)
+		}
+	}
+	return code
 }
 
 func filterRowsAtOrBefore(in []verify.Issue, sinceTicketN, sinceWorklogN int) []verify.Issue {
@@ -137,9 +190,22 @@ func printSummary(w io.Writer, rep verify.Report) {
 func isLegacyCompatibilityWarning(code string) bool {
 	switch code {
 	case "MISSING_CATEGORY",
+		"MISSING_REQUIRED",
+		"NON_EMPTY_VIOLATION",
+		"TS_NOT_INCREASING",
+		"UNKNOWN_TYPE",
+		"UNKNOWN_AREA",
+		"UNKNOWN_PRIORITY",
+		"LEGACY_STATE_VALUE",
+		"UNKNOWN_STATUS",
+		"UNKNOWN_EVENT_ROLE",
+		"UNKNOWN_EVENT_RESULT",
+		"MISSING_EVENT_FIELD",
+		"EMPTY_EVENT_FIELD",
 		"ORPHAN_WORKLOG",
 		"PREMATURE_WORKLOG",
 		"WEAK_DONE",
+		"REWORK_WEAK",
 		"INVALID_TRANSITION",
 		"AUDIT_REVIEWED_N_MISMATCH",
 		"INVALIDATED_HISTORICAL":

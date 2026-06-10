@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -34,6 +35,9 @@ func (o Options) withDefaults() Options {
 func Acquire(path string, opts Options) (release func() error, err error) {
 	opts = opts.withDefaults()
 	deadline := time.Now().Add(opts.TotalWait)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
 
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)

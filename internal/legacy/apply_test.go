@@ -44,7 +44,7 @@ func TestApply_Idempotent(t *testing.T) {
 	if string(first) != string(second) {
 		t.Fatalf("second apply changed tickets file:\nfirst=%s\nsecond=%s", first, second)
 	}
-	entries, _ := os.ReadDir(filepath.Join(dir, "ledger", ".backup"))
+	entries, _ := os.ReadDir(filepath.Join(dir, ".ldgr", "backups"))
 	if len(entries) > 1 {
 		t.Fatalf("second run should not create a new backup; got %d backup dirs", len(entries))
 	}
@@ -58,7 +58,7 @@ func TestApply_BacksUpExistingFile(t *testing.T) {
 	if err := Apply(plan, ApplyOpts{}); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	entries, _ := os.ReadDir(filepath.Join(dir, "ledger", ".backup"))
+	entries, _ := os.ReadDir(filepath.Join(dir, ".ldgr", "backups"))
 	if len(entries) != 1 {
 		t.Fatalf("expected one backup dir, got %d", len(entries))
 	}
@@ -75,8 +75,8 @@ func TestApply_ArchiveOriginalsMovesLegacySources(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "agent-tickets.jsonl")); !os.IsNotExist(err) {
 		t.Fatalf("legacy source should be moved away after --archive-originals, stat err=%v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "ledger", "legacy", "agent-tickets.jsonl")); err != nil {
-		t.Fatalf("legacy source should be at ledger/legacy/: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".ldgr", "legacy", "agent-tickets.jsonl")); err != nil {
+		t.Fatalf("legacy source should be at .ldgr/legacy/: %v", err)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestApply_NoChangesDoesNotBackup(t *testing.T) {
 	if err := Apply(plan, ApplyOpts{}); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "ledger", ".backup")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, ".ldgr", "backups")); !os.IsNotExist(err) {
 		t.Fatalf(".backup should not exist when nothing was changed")
 	}
 }
