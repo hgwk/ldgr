@@ -63,16 +63,23 @@ var legacyBodyRels = []string{
 // RunInstructionsCLI implements `ldgr instructions install|uninstall`.
 func RunInstructionsCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ldgr instructions <install|uninstall> [--target PATH] [--keep-bodies]")
+		fmt.Fprintln(stderr, "usage: ldgr instructions <install|uninstall> [--target PATH] [--home PATH] [--keep-bodies]")
 		return 2
 	}
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("instructions " + sub)
 	target := fs.String("target", "", "")
+	home := fs.String("home", "", "ldgr home directory for operating guide (overrides LDGR_HOME)")
 	keepBodies := fs.Bool("keep-bodies", false, "uninstall only: leave local legacy instruction bodies")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
+	restore, err := setLDGRHomeOverride(*home)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer restore()
 	dir := resolveTarget(*target)
 	switch sub {
 	case "install":
@@ -100,10 +107,10 @@ func installInstructions(dir string) error {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(bodyPath), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create ldgr home for operating guide %s: %w; set LDGR_HOME or pass --home to a writable directory", filepath.Dir(bodyPath), err)
 	}
 	if err := os.WriteFile(bodyPath, []byte(instructionBody), 0o644); err != nil {
-		return err
+		return fmt.Errorf("write ldgr operating guide %s: %w; set LDGR_HOME or pass --home to a writable directory", bodyPath, err)
 	}
 	for _, oldRel := range legacyBodyRels {
 		_ = os.Remove(filepath.Join(dir, oldRel))

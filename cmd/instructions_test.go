@@ -41,6 +41,30 @@ func TestInstructionsInstall_CreatesBodiesAndPointer(t *testing.T) {
 	}
 }
 
+func TestInstructionsInstall_HomeFlagOverridesLDGRHome(t *testing.T) {
+	envHome := setTestLDGRHome(t)
+	flagHome := t.TempDir()
+	dir := t.TempDir()
+
+	code := RunInstructionsCLI([]string{"install", "--target", dir, "--home", flagHome}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != 0 {
+		t.Fatalf("install failed")
+	}
+	if _, err := os.Stat(filepath.Join(flagHome, "operating-guide.md")); err != nil {
+		t.Fatalf("missing flag home body: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(envHome, "operating-guide.md")); !os.IsNotExist(err) {
+		t.Fatalf("env home should not be used when --home is set: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("read CLAUDE.md: %v", err)
+	}
+	if !strings.HasPrefix(string(data), "@"+filepath.Join(flagHome, "operating-guide.md")+"\n") {
+		t.Fatalf("missing flag home pointer: %s", data)
+	}
+}
+
 func TestInstructionsInstall_PreservesExistingMarkdown(t *testing.T) {
 	home := setTestLDGRHome(t)
 	dir := t.TempDir()

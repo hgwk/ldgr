@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const Version = "0.3.1"
+const Version = "0.3.2"
 
 func RunVersionCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {

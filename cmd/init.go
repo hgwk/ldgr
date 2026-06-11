@@ -90,9 +90,16 @@ func runInitCLI(args []string, stdout, stderr io.Writer) int {
 	slug := fs.String("slug", "", "project slug (defaults to dir name)")
 	name := fs.String("name", "", "project display name (defaults to slug)")
 	language := fs.String("language", "", "free-text writing language for ledger content (for example ko, en)")
+	home := fs.String("home", "", "ldgr home directory for registry and operating guide (overrides LDGR_HOME)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	restore, err := setLDGRHomeOverride(*home)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer restore()
 	dir := *target
 	if dir == "" {
 		var err error

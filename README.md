@@ -224,6 +224,15 @@ body to `~/.ldgr/operating-guide.md` and add a top-of-file absolute
 `@.../.ldgr/operating-guide.md` reference to both `AGENTS.md` and `CLAUDE.md`,
 creating those files when missing.
 
+Sandboxed runners that cannot write the default home-local path can override
+the ldgr home directory with `LDGR_HOME` or `--home`:
+
+```bash
+LDGR_HOME=.ldgr-home ldgr init --target .
+ldgr init --target . --home .ldgr-home
+ldgr instructions install --target . --home .ldgr-home
+```
+
 `--language` sets `ledger/config.json` → `writing_language`. Agents should use
 that language for free-text ledger fields such as `task`, `notes`, `result`,
 `audit_notes`, `summary`, and `acceptance`; schema keys, enum values, paths,

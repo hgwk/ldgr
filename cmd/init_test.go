@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,6 +69,34 @@ func TestRunInit_InstallsInstructionPointers(t *testing.T) {
 	}
 	if !contains(string(claudeData), "@"+filepath.Join(home, "operating-guide.md")) {
 		t.Fatalf("CLAUDE.md missing instruction pointer:\n%s", claudeData)
+	}
+}
+
+func TestRunInitCLI_HomeFlagOverridesLDGRHome(t *testing.T) {
+	envHome := t.TempDir()
+	flagHome := t.TempDir()
+	t.Setenv("LDGR_HOME", envHome)
+	target := t.TempDir()
+
+	code := runInitCLI([]string{"--target", target, "--home", flagHome, "--slug", "sandbox"}, io.Discard, io.Discard)
+	if code != 0 {
+		t.Fatalf("runInitCLI exit = %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(flagHome, "operating-guide.md")); err != nil {
+		t.Fatalf("expected flag home guide: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(flagHome, "registry.json")); err != nil {
+		t.Fatalf("expected flag home registry: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(envHome, "operating-guide.md")); !os.IsNotExist(err) {
+		t.Fatalf("env home should not be used when --home is set: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !contains(string(data), "@"+filepath.Join(flagHome, "operating-guide.md")) {
+		t.Fatalf("AGENTS.md missing flag home pointer:\n%s", data)
 	}
 }
 
