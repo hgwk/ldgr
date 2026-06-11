@@ -18,6 +18,9 @@ func Dispatch(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	name := args[0]
+	if name == "version" || name == "--version" || name == "-V" {
+		return RunVersionCLI(args[1:], stdout, stderr)
+	}
 	handler, ok := Commands[name]
 	if !ok {
 		fmt.Fprintf(stderr, "unknown subcommand: %s\n", name)

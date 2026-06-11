@@ -6,6 +6,14 @@ Append-only project ledger for LLM agents. Multi-project unified view.
 
 See `docs/superpowers/specs/` in the design repo for the full spec.
 
+## Usage
+
+```bash
+ldgr version
+ldgr verify
+ldgr view
+```
+
 ## Migrating from old layouts
 
 If your repository has root-level `agent-tickets.jsonl`, `agent-worklog.jsonl`, or `goal.json`,

@@ -27,3 +27,16 @@ func TestDispatch_NoArgs_PrintsUsage(t *testing.T) {
 		t.Fatalf("expected usage in stderr, got: %q", stderr.String())
 	}
 }
+
+func TestDispatch_Version(t *testing.T) {
+	for _, args := range [][]string{{"version"}, {"--version"}, {"-V"}} {
+		var stdout, stderr bytes.Buffer
+		code := Dispatch(args, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("Dispatch(%v) exit = %d, stderr = %q", args, code, stderr.String())
+		}
+		if got, want := stdout.String(), "ldgr "+Version+"\n"; got != want {
+			t.Fatalf("Dispatch(%v) stdout = %q, want %q", args, got, want)
+		}
+	}
+}
