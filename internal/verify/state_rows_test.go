@@ -9,7 +9,7 @@ func TestVerify_SchemaStateValidLedgerPasses(t *testing.T) {
 		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"ready","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":[],"event":{"actor":"codex","role":"planner","summary":"opened","notes":""}}
 {"n":2,"ts":"2026-05-14T10:01:00Z","id":"T-1","parent":"ROOT","type":"task","state":"doing","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":[],"event":{"actor":"codex","role":"implementer","summary":"started","notes":""}}
 {"n":3,"ts":"2026-05-14T10:02:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"codex","role":"implementer","summary":"ready for review","notes":""}}
-{"n":4,"ts":"2026-05-14T10:03:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":3,"summary":"passed","notes":""}}
+{"n":4,"ts":"2026-05-14T10:03:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test","commit:abc1234"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":3,"summary":"passed","notes":""}}
 `,
 		"ledger/worklog.jsonl": `{"n":1,"ts":"2026-05-14T10:04:00Z","ticket":"T-1","actor":"codex","title":"build ui shipped","summary":"implemented","paths":["ui.tsx"],"commands":["go test"],"notes":""}
 `,
@@ -20,6 +20,36 @@ func TestVerify_SchemaStateValidLedgerPasses(t *testing.T) {
 	}
 	if len(report.Fails) != 0 || len(report.Warns) != 0 {
 		t.Fatalf("expected clean state-model verify, got fails=%+v warns=%+v", report.Fails, report.Warns)
+	}
+}
+
+func TestVerify_StateDoneWarnsOnMissingGitEvidence(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONState(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"codex","role":"implementer","summary":"review","notes":""}}
+{"n":2,"ts":"2026-05-14T10:01:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":1,"summary":"passed","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarnCode(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("expected DONE_MISSING_GIT_EVIDENCE warn, got %+v", report.Warns)
+	}
+}
+
+func TestVerify_StateDoneAcceptsNoCommitReason(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONState(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test"],"event":{"actor":"codex","role":"implementer","summary":"review","notes":""}}
+{"n":2,"ts":"2026-05-14T10:01:00Z","id":"T-1","parent":"ROOT","type":"task","state":"done","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["test"],"evidence":["go test","no_commit: documentation-only local check"],"event":{"actor":"claude","role":"auditor","result":"pass","reviewed_n":1,"summary":"passed","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if hasWarnCode(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("did not expect DONE_MISSING_GIT_EVIDENCE warn, got %+v", report.Warns)
 	}
 }
 

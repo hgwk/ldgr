@@ -201,6 +201,7 @@ func appendTicketEvent(dir string, input map[string]any, stdout, stderr io.Write
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	warnMissingGitCompletionEvidence(out, stderr)
 	emitTicketGuidance(dir, out, stderr)
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")

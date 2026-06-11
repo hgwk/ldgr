@@ -87,6 +87,9 @@ func checkStateAuditRule(rep *Report, line int, r ledger.Row, event map[string]a
 		if !hasNonEmptyEvidence(r) {
 			rep.Warns = append(rep.Warns, Issue{File: "ledger/tickets.jsonl", Line: line, Code: "WEAK_DONE", Message: "state=done should record non-empty evidence"})
 		}
+		if !hasGitCompletionEvidence(r) {
+			rep.Warns = append(rep.Warns, Issue{File: "ledger/tickets.jsonl", Line: line, Code: "DONE_MISSING_GIT_EVIDENCE", Message: "state=done should record commit:<sha>, pr:<url-or-number>, or no_commit:<reason> evidence"})
+		}
 	case "rework":
 		if !stateAuditRoleIsPass(r, event) {
 			rep.Warns = append(rep.Warns, Issue{File: "ledger/tickets.jsonl", Line: line, Code: "REWORK_WEAK", Message: "state=rework should be an auditor/audit row"})

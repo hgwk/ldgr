@@ -3,6 +3,8 @@ package viewer
 import (
 	"net/http"
 	"testing"
+
+	"github.com/hgwk/ldgr/internal/ledger"
 )
 
 func TestServer_ProjectsListsRegistered(t *testing.T) {
@@ -38,6 +40,9 @@ func TestServer_ProjectSummaryCountsAuditLifecycleAsActive(t *testing.T) {
 		p.Tickets = append(p.Tickets,
 			map[string]any{"n": float64(2), "ts": "2026-05-14T10:01:00Z", "ticket": "AUDIT-1", "parent_ticket": "ROOT", "agent": "codex", "role": "impl", "status": "audit_ready", "task": "audit", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "branch": ""},
 			map[string]any{"n": float64(3), "ts": "2026-05-14T10:02:00Z", "ticket": "FIX-1", "parent_ticket": "ROOT", "agent": "codex", "role": "audit", "status": "changes_requested", "task": "fix", "scope": "repo", "paths": []any{}, "blocked_by": []any{}, "branch": ""},
+			map[string]any{"n": float64(4), "ts": "2026-05-14T10:03:00Z", "id": "READY-1", "parent": "ROOT", "type": "task", "state": "ready", "title": "ready"},
+			map[string]any{"n": float64(5), "ts": "2026-05-14T10:04:00Z", "id": "REVIEW-1", "parent": "ROOT", "type": "task", "state": "review", "title": "review"},
+			map[string]any{"n": float64(6), "ts": "2026-05-14T10:05:00Z", "id": "REWORK-1", "parent": "ROOT", "type": "task", "state": "rework", "title": "rework"},
 		)
 		return p, nil
 	}
@@ -48,7 +53,38 @@ func TestServer_ProjectSummaryCountsAuditLifecycleAsActive(t *testing.T) {
 	if len(arr) != 1 || arr[0]["project_id"] != pid {
 		t.Fatalf("project list wrong: %+v", arr)
 	}
-	if arr[0]["open_tickets"] != float64(3) {
+	if arr[0]["open_tickets"] != float64(6) {
 		t.Fatalf("audit lifecycle statuses should count as active, got %+v", arr[0])
+	}
+}
+
+func TestServer_ProjectsSortByRecentActivityWithMissingLast(t *testing.T) {
+	srv := &Server{
+		ListProjects: func() ([]projectListEntry, error) {
+			return []projectListEntry{
+				{ProjectID: "old", Slug: "old", Name: "old"},
+				{ProjectID: "missing", Slug: "missing", Name: "missing"},
+				{ProjectID: "new", Slug: "new", Name: "new"},
+			}, nil
+		},
+		LoadProject: func(id string) (Project, error) {
+			switch id {
+			case "old":
+				return Project{Goal: ledger.Goal{Summary: "old"}, Tickets: []ledger.Row{{"ticket": "A", "status": "open", "ts": "2026-05-14T10:00:00Z"}}}, nil
+			case "new":
+				return Project{Goal: ledger.Goal{Summary: "new"}, Tickets: []ledger.Row{{"id": "B", "state": "ready", "ts": "2026-05-15T10:00:00Z"}}}, nil
+			default:
+				return Project{Missing: true}, nil
+			}
+		},
+	}
+	var arr []map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects", &arr); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	got := []any{arr[0]["project_id"], arr[1]["project_id"], arr[2]["project_id"]}
+	want := []any{"new", "old", "missing"}
+	if got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }

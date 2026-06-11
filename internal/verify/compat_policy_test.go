@@ -23,6 +23,34 @@ func TestVerify_WarnsOnWeakDone(t *testing.T) {
 	}
 }
 
+func TestVerify_LegacyDoneWarnsOnMissingGitEvidence(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"GD-1","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":1,"task":"done","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarn(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("expected DONE_MISSING_GIT_EVIDENCE warn, got %+v", report)
+	}
+}
+
+func TestVerify_LegacyDoneAcceptsPREvidence(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSON(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"GD-2","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test","pr:#42"],"reviewed_n":1,"task":"done","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if hasWarn(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("did not expect DONE_MISSING_GIT_EVIDENCE warn, got %+v", report)
+	}
+}
+
 func TestVerify_WarnsOnInvalidTransition(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"ledger/config.json": validConfigJSON(),

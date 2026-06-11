@@ -229,7 +229,7 @@ func TestWorklogAddState_AcceptsAfterAuditPass(t *testing.T) {
 	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-WL","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
 	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
 	reviewN := int(rows[len(rows)-1]["n"].(float64))
-	pass := fmt.Sprintf(`{"id":"STATE-WL","state":"done","evidence":["go test"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	pass := fmt.Sprintf(`{"id":"STATE-WL","state":"done","evidence":["go test","commit:abc1234"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
 	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(pass), &bytes.Buffer{}, &bytes.Buffer{})
 
 	wl := `{"ticket":"STATE-WL","title":"build shipped","summary":"implemented","paths":["x.go"],"commands":["go test"]}`

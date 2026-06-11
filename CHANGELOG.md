@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.4 - 2026-06-11
+
+### Changed
+
+- Restore the viewer Dashboard route as a first-class page.
+- Sort viewer projects by most recent ticket or worklog activity, with missing
+  projects last.
+- Make the Tree view read the current state-model ticket fields as well as
+  historical compatibility fields.
+- Warn when `done` tickets lack Git completion evidence such as `commit:<sha>`,
+  `pr:<url-or-number>`, or `no_commit:<reason>`.
+
 ## v0.3.0 - 2026-06-10
 
 ### Changed

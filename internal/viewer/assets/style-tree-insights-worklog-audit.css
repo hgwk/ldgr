@@ -37,6 +37,65 @@
   outline-offset: 2px;
 }
 
+/* Dashboard */
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+.metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.metric-value {
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 600;
+  margin-top: var(--space-1);
+}
+.metric-detail {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: var(--space-1);
+}
+.dashboard-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--space-4);
+}
+.dashboard-panel {
+  min-width: 0;
+}
+.dashboard-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+.dashboard-row {
+  display: grid;
+  grid-template-columns: minmax(100px, auto) auto 1fr;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 5px var(--space-2);
+  border-radius: 4px;
+}
+.dashboard-row-clickable {
+  cursor: pointer;
+}
+.dashboard-row-clickable:hover {
+  background: var(--surface-2);
+}
+
 .badge-prio { font-weight: 600; }
 .badge-prio-p0 { color: white; background: #dc2626; border-color: #dc2626; }
 .badge-prio-p1 { color: white; background: #ea580c; border-color: #ea580c; }
@@ -56,6 +115,11 @@
 .tree-graph-dot.status-audit_ready { fill: var(--status-audit_ready); }
 .tree-graph-dot.status-done { fill: var(--status-done); }
 .tree-graph-dot.status-cancelled { fill: var(--status-cancelled); }
+.tree-graph-dot.status-ready { fill: var(--status-open); }
+.tree-graph-dot.status-doing { fill: var(--status-in_progress); }
+.tree-graph-dot.status-review { fill: var(--status-audit_ready); }
+.tree-graph-dot.status-rework { fill: var(--status-changes_requested); }
+.tree-graph-dot.status-dropped { fill: var(--status-cancelled); }
 .tree-node-head {
   flex: 1;
   min-width: 0;

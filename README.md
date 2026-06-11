@@ -146,6 +146,9 @@ The lifecycle is **enforced**, not advisory:
 - Closing a ticket requires a separate audit event: `event.role=auditor`,
   `state=done`, `event.result=pass`, non-empty `evidence`, and `reviewed_n`
   pointing at the review row.
+- Done evidence should also include `commit:<sha>`, `pr:<url-or-number>`, or
+  `no_commit:<reason>`; `ldgr verify` warns when completed work is not tied to
+  Git or an explicit exception.
 - Requested changes are also an audit event: `state=rework`,
   `event.result=changes_requested`, `event.notes`, and `reviewed_n`.
 - `ldgr worklog add` is gated — it requires the ticket's latest row to be

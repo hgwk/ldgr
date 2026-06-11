@@ -17,20 +17,27 @@ async function renderTree(root, background) {
     root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
     return;
 	  }
-  const treeParents = uniqueSorted(all.map((it) => it.row.parent_ticket || it.parent));
+  const treeParents = uniqueSorted(all.map((it) => it.row.parent_ticket || it.row.parent || it.parent));
+  const canonical = all.some((it) => it.row.state || it.row.type || it.row.id);
+  const kindOptions = uniqueSorted(all.map((it) => it.row.kind || it.row.type));
+  const stateOptions = canonical
+    ? ["", "ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"]
+    : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
+  clearInvalidSelection(state.treeFilter, "kind", ["", ...kindOptions]);
+  clearInvalidSelection(state.treeFilter, "status", stateOptions);
   const treeBar = el("div", { class: "kanban-bar" });
   treeBar.appendChild(selectControl(["", ...treeParents], state.treeFilter.parent, "All parents", (v) => { state.treeFilter.parent = v; syncURL(); loadPage(); }));
-  treeBar.appendChild(selectControl(["", "plan", "issue", "task", "audit", "ops"].map(v => ({ value: v, text: v ? "Kind " + v : "" })), state.treeFilter.kind, "All kinds", (v) => { state.treeFilter.kind = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(["", ...kindOptions].map(v => ({ value: v, text: v ? (canonical ? "Type " : "Kind ") + v : "" })), state.treeFilter.kind, canonical ? "All types" : "All kinds", (v) => { state.treeFilter.kind = v; syncURL(); loadPage(); }));
   treeBar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.treeFilter.priority, "All priorities", (v) => { state.treeFilter.priority = v; syncURL(); loadPage(); }));
-  treeBar.appendChild(selectControl(["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"].map(v => ({ value: v, text: v ? "Status " + v : "" })), state.treeFilter.status, "All statuses", (v) => { state.treeFilter.status = v; syncURL(); loadPage(); }));
+  treeBar.appendChild(selectControl(stateOptions.map(v => ({ value: v, text: v ? (canonical ? "State " : "Status ") + v : "" })), state.treeFilter.status, canonical ? "All states" : "All statuses", (v) => { state.treeFilter.status = v; syncURL(); loadPage(); }));
   root.appendChild(treeBar);
 
   const byId = new Map();
-  for (const item of all) byId.set(item.row.ticket, item);
+  for (const item of all) byId.set(ticketID(item.row), item);
   const childrenOf = new Map();
   const workstreamBuckets = new Map();
   for (const item of all) {
-    const p = item.row.parent_ticket || item.parent || "—";
+    const p = item.row.parent_ticket || item.row.parent || item.parent || "—";
     if (byId.has(p)) {
       // parent is itself a ticket id → nested.
       if (!childrenOf.has(p)) childrenOf.set(p, []);
@@ -46,7 +53,7 @@ async function renderTree(root, background) {
   // A ticket that has a ticket-parent shouldn't ALSO appear at the top of its
   // workstream bucket — exclude such tickets from workstream listings.
   for (const [bucket, items] of workstreamBuckets) {
-    workstreamBuckets.set(bucket, items.filter((it) => visible.has(it.row.ticket) && !byId.has(it.row.parent_ticket)));
+    workstreamBuckets.set(bucket, items.filter((it) => visible.has(ticketID(it.row)) && !byId.has(it.row.parent_ticket || it.row.parent)));
   }
 
   // Render each workstream bucket as a section drawn as a git-style commit
@@ -75,8 +82,8 @@ async function renderTree(root, background) {
 // ancestor at depth j has a later sibling, so a vertical rail keeps running
 // through this row at lane j.
 function flattenTree(item, depth, isLast, isFirst, ancMore, childrenOf, visible, out) {
-  const kids = (childrenOf.get(item.row.ticket) || [])
-    .filter((k) => visible.has(k.row.ticket))
+  const kids = (childrenOf.get(ticketID(item.row)) || [])
+    .filter((k) => visible.has(ticketID(k.row)))
     .sort((a, b) => (b.row.ts || "").localeCompare(a.row.ts || ""));
   out.push({ row: item.row, depth, isLast, isFirst, ancMore: ancMore.slice(), hasKids: kids.length > 0 });
   const childAnc = ancMore.slice();
@@ -124,15 +131,19 @@ function renderGraphRow(r) {
   dot.setAttribute("cx", cx(d));
   dot.setAttribute("cy", mid);
   dot.setAttribute("r", TREE_DOT_R);
-  dot.setAttribute("class", "tree-graph-dot status-" + (r.row.status || "open"));
+  dot.setAttribute("class", "tree-graph-dot status-" + (ticketState(r.row) || "open"));
   svg.appendChild(dot);
 
-  const head = el("div", { class: "tree-node-head", onclick: () => openDrawer(r.row.ticket) });
-  head.appendChild(el("span", { class: "mono", text: r.row.ticket }));
+  const id = ticketID(r.row);
+  const stateName = ticketState(r.row);
+  const kind = r.row.kind || r.row.type || "";
+  const title = r.row.task || r.row.title || "";
+  const head = el("div", { class: "tree-node-head", onclick: () => openDrawer(id) });
+  head.appendChild(el("span", { class: "mono", text: id }));
   if (r.row.priority) head.appendChild(el("span", { class: "badge badge-prio badge-prio-" + (r.row.priority || "").toLowerCase(), text: r.row.priority }));
-  if (r.row.kind && r.row.kind !== "task") head.appendChild(el("span", { class: "badge", text: r.row.kind }));
-  head.appendChild(el("span", { class: "pill " + (r.row.status || ""), text: r.row.status || "" }));
-  head.appendChild(el("span", { class: "tree-task", text: r.row.task || "" }));
+  if (kind && kind !== "task") head.appendChild(el("span", { class: "badge", text: kind }));
+  head.appendChild(el("span", { class: "pill " + stateName, text: stateName }));
+  head.appendChild(el("span", { class: "tree-task", text: title }));
   head.appendChild(el("span", { class: "tree-ts muted", text: fmtTS(r.row.ts) }));
 
   const rowEl = el("div", { class: "tree-graph-row" });
@@ -151,18 +162,18 @@ function computeVisibleTreeTickets(items, byId) {
 }
 
 function treeItemMatches(item) {
-  if (state.treeFilter.parent && (item.row.parent_ticket || item.parent || "") !== state.treeFilter.parent) return false;
-  if (state.treeFilter.kind && (item.row.kind || "") !== state.treeFilter.kind) return false;
+  if (state.treeFilter.parent && (item.row.parent_ticket || item.row.parent || item.parent || "") !== state.treeFilter.parent) return false;
+  if (state.treeFilter.kind && (item.row.kind || item.row.type || "") !== state.treeFilter.kind) return false;
   if (state.treeFilter.priority && (item.row.priority || "") !== state.treeFilter.priority) return false;
-  if (state.treeFilter.status && (item.row.status || "") !== state.treeFilter.status) return false;
+  if (state.treeFilter.status && ticketState(item.row) !== state.treeFilter.status) return false;
   return true;
 }
 
 function markVisibleWithAncestors(item, byId, visible) {
   let cur = item;
-  while (cur && cur.row && cur.row.ticket && !visible.has(cur.row.ticket)) {
-    visible.add(cur.row.ticket);
-    cur = byId.get(cur.row.parent_ticket);
+  while (cur && cur.row && ticketID(cur.row) && !visible.has(ticketID(cur.row))) {
+    visible.add(ticketID(cur.row));
+    cur = byId.get(cur.row.parent_ticket || cur.row.parent);
   }
 }
 

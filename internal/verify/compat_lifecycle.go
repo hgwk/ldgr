@@ -179,5 +179,13 @@ func checkWeakDone(rep *Report, tickets []ledger.Row) {
 				Message: fmt.Sprintf("[WEAK_DONE] %s: reviewed_n missing", id),
 			})
 		}
+		if !hasGitCompletionEvidence(r) {
+			rep.Warns = append(rep.Warns, Issue{
+				File:    "ledger/tickets.jsonl",
+				Line:    int(ln),
+				Code:    "DONE_MISSING_GIT_EVIDENCE",
+				Message: fmt.Sprintf("[DONE_MISSING_GIT_EVIDENCE] %s: done row should include commit:<sha>, pr:<url-or-number>, or no_commit:<reason> evidence", id),
+			})
+		}
 	}
 }

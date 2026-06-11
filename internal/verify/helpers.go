@@ -140,6 +140,23 @@ func isUsefulEvidence(evidence string) bool {
 	return strings.ContainsAny(v, " ./:-_")
 }
 
+func hasGitCompletionEvidence(r ledger.Row) bool {
+	for _, evidence := range stringSliceField(r, "evidence") {
+		if isGitCompletionEvidence(evidence) {
+			return true
+		}
+	}
+	return false
+}
+
+func isGitCompletionEvidence(evidence string) bool {
+	v := strings.TrimSpace(strings.ToLower(evidence))
+	if strings.HasPrefix(v, "commit:") || strings.HasPrefix(v, "pr:") || strings.HasPrefix(v, "no_commit:") {
+		return len(strings.TrimSpace(v[strings.Index(v, ":")+1:])) > 0
+	}
+	return strings.HasPrefix(v, "https://github.com/") && strings.Contains(v, "/pull/")
+}
+
 func handoffText(r ledger.Row) (string, bool) {
 	parts := []string{}
 	for _, key := range []string{"handoff", "handoff_to", "notes", "audit_notes"} {

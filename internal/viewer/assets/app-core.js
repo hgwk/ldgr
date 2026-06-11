@@ -176,7 +176,7 @@ function renderProjectList(projects) {
     if (p.missing) parts.push("missing");
     else {
       parts.push(p.open_tickets + " active");
-      if (p.recent_worklog_ts) parts.push("last " + fmtTS(p.recent_worklog_ts));
+      if (p.recent_activity_ts) parts.push("last " + fmtTS(p.recent_activity_ts));
     }
     li.appendChild(el("span", { class: "meta", text: parts.join(" · ") }));
     if (p.project_id === state.projectId) li.classList.add("active");
@@ -208,7 +208,6 @@ function normalizePage(page) {
     state.ticketView = page;
     return "tickets";
   }
-  if (page === "dashboard") return "tickets";
   return page || "tickets";
 }
 
@@ -260,6 +259,7 @@ async function loadPage(opts) {
   if (!background) setLoading(page);
   try {
     switch (state.page) {
+      case "dashboard": await renderDashboard(page, background); break;
       case "tickets":   await renderTickets(page, background); break;
       case "audit":     await renderAudit(page, background); break;
       case "worklog":   await renderWorklog(page, background); break;

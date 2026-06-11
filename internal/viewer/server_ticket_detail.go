@@ -75,7 +75,13 @@ func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, proj
 }
 
 func activeTicketCount(counts map[string]int) int {
-	return counts["open"] + counts["in_progress"] + counts["blocked"] + counts["audit_ready"] + counts["changes_requested"]
+	total := 0
+	for state, count := range counts {
+		if isActiveState(state) {
+			total += count
+		}
+	}
+	return total
 }
 
 func visibleWorklog(rows []ledger.Row) []ledger.Row {
@@ -102,6 +108,25 @@ func recentWorklogTS(rows []ledger.Row) string {
 		}
 		ts, _ := r["ts"].(string)
 		if ts > best {
+			best = ts
+		}
+	}
+	return best
+}
+
+func recentProjectActivityTS(ticketRows, worklogRows []ledger.Row) string {
+	best := recentWorklogTS(worklogRows)
+	invalidated := InvalidatedNs(ticketRows)
+	for _, r := range ticketRows {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		n, _ := r["n"].(float64)
+		if _, isInvalid := invalidated[int(n)]; isInvalid {
+			continue
+		}
+		ts, _ := r["ts"].(string)
+		if parseTS(ts).After(parseTS(best)) {
 			best = ts
 		}
 	}

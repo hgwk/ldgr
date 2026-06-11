@@ -35,6 +35,7 @@ func runTicketEvent(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	warnMissingGitCompletionEvidence(out, stderr)
 	emitTicketGuidance(dir, out, stderr)
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
