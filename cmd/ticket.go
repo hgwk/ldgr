@@ -14,8 +14,9 @@ func init() {
 
 // RunTicketCLI is the entry for `ldgr ticket ...`.
 func RunTicketCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
 		fmt.Fprintln(stderr, "usage: ldgr ticket <add|event|ready> [flags]")
+		fmt.Fprintln(stderr, "try: ldgr ticket add --example")
 		return 2
 	}
 	sub, rest := args[0], args[1:]

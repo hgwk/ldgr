@@ -238,6 +238,13 @@ that language for free-text ledger fields such as `task`, `notes`, `result`,
 `audit_notes`, `summary`, and `acceptance`; schema keys, enum values, paths,
 commands, and code identifiers stay unchanged.
 
+To create a state-model ticket row, start from the built-in example:
+
+```bash
+ldgr ticket add --example
+ldgr ticket add --json @ticket.json
+```
+
 Uninstall:
 
 ```bash

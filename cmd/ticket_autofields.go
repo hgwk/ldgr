@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hgwk/ldgr/internal/agent"
@@ -44,13 +45,14 @@ func envAsMap() map[string]string {
 }
 
 func requireFields(row map[string]any, required []string, kind string) error {
+	var errs validationErrors
 	for _, f := range required {
 		v, ok := row[f]
 		if !ok || v == nil {
-			return fmt.Errorf("%s: missing required field %q", kind, f)
+			errs.Add(fmt.Sprintf("%s: missing required field %q", kind, f))
 		}
 	}
-	return nil
+	return errs.Err()
 }
 
 func isEmpty(v any) bool {
@@ -64,15 +66,46 @@ func isEmpty(v any) bool {
 }
 
 func requireNonEmpty(row map[string]any, fields []string, kind string) error {
+	var errs validationErrors
 	for _, f := range fields {
 		v, ok := row[f]
 		if !ok {
-			return fmt.Errorf("%s: missing required field %q", kind, f)
+			errs.Add(fmt.Sprintf("%s: missing required field %q", kind, f))
+			continue
+		}
+		if v == nil {
+			errs.Add(fmt.Sprintf("%s: field %q must be non-empty", kind, f))
+			continue
 		}
 		s, isStr := v.(string)
 		if !isStr || s == "" {
-			return fmt.Errorf("%s: field %q must be non-empty", kind, f)
+			errs.Add(fmt.Sprintf("%s: field %q must be non-empty", kind, f))
 		}
 	}
-	return nil
+	return errs.Err()
+}
+
+type validationErrors []string
+
+func (e *validationErrors) Add(message string) {
+	if message != "" {
+		*e = append(*e, message)
+	}
+}
+
+func (e *validationErrors) AddErr(err error) {
+	if err != nil {
+		e.Add(err.Error())
+	}
+}
+
+func (e validationErrors) Err() error {
+	if len(e) == 0 {
+		return nil
+	}
+	return e
+}
+
+func (e validationErrors) Error() string {
+	return strings.Join(e, "\n")
 }

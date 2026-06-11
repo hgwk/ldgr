@@ -15,8 +15,13 @@ func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	fs := newFlagSet("ticket add")
 	target := fs.String("target", "", "")
 	jsonSpec := fs.String("json", "", "")
+	example := fs.Bool("example", false, "print an example state-model ticket JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *example {
+		fmt.Fprintln(stdout, ticketAddExample())
+		return 0
 	}
 	dir := resolveTarget(*target)
 
@@ -92,4 +97,26 @@ func normalizeTicketAdd(dir string, input map[string]any, stderr io.Writer) (map
 		return nil, fmt.Errorf("%s\n%s", v.Message, v.Hint)
 	}
 	return resolved, nil
+}
+
+func ticketAddExample() string {
+	return `{
+  "id": "agent-guide-parent-sync",
+  "parent": "ROOT",
+  "type": "task",
+  "state": "ready",
+  "area": "docs",
+  "priority": "P2",
+  "title": "Record AGENTS.md guide pointer update",
+  "owner": "codex",
+  "blocked_by": [],
+  "acceptance": ["AGENTS.md / CLAUDE.md guide pointer state is recorded"],
+  "evidence": [],
+  "event": {
+    "actor": "codex",
+    "role": "planner",
+    "summary": "Record agent guide update",
+    "notes": "agent guide updated"
+  }
+}`
 }

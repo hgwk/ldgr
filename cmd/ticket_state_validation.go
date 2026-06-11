@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hgwk/ldgr/internal/agent"
@@ -42,21 +44,27 @@ func requireStateEvent(row map[string]any) error {
 	if !ok {
 		return errors.New("ticket: field \"event\" must be an object")
 	}
+	var errs validationErrors
 	for _, f := range ledger.EventRequired {
 		if _, ok := event[f]; !ok {
-			return fmt.Errorf("ticket: missing required field \"event.%s\"", f)
+			errs.Add(fmt.Sprintf("ticket: missing required field \"event.%s\"", f))
 		}
 	}
 	for _, f := range ledger.EventNonEmpty {
-		v, ok := event[f].(string)
+		raw, exists := event[f]
+		if !exists {
+			continue
+		}
+		v, ok := raw.(string)
 		if !ok || v == "" {
-			return fmt.Errorf("ticket: field \"event.%s\" must be non-empty", f)
+			errs.Add(fmt.Sprintf("ticket: field \"event.%s\" must be non-empty", f))
 		}
 	}
-	return nil
+	return errs.Err()
 }
 
 func validateStateTicketWrite(row map[string]any, prev ledger.Row) error {
+	var errs validationErrors
 	for _, check := range []struct {
 		key  string
 		enum map[string]struct{}
@@ -68,18 +76,21 @@ func validateStateTicketWrite(row map[string]any, prev ledger.Row) error {
 	} {
 		value, _ := row[check.key].(string)
 		if _, ok := check.enum[value]; !ok {
-			return fmt.Errorf("ticket: invalid %s %q", check.key, value)
+			errs.Add(fmt.Sprintf("ticket: invalid %s %q (allowed: %s)", check.key, value, allowedEnumValues(check.enum)))
 		}
 	}
 	event, _ := row["event"].(map[string]any)
 	role, _ := event["role"].(string)
 	if _, ok := ledger.EventRoleEnum[role]; !ok {
-		return fmt.Errorf("ticket: invalid event.role %q", role)
+		errs.Add(fmt.Sprintf("ticket: invalid event.role %q (allowed: %s)", role, allowedEnumValues(ledger.EventRoleEnum)))
 	}
 	if result, _ := event["result"].(string); result != "" {
 		if _, ok := ledger.EventResultEnum[result]; !ok {
-			return fmt.Errorf("ticket: invalid event.result %q", result)
+			errs.Add(fmt.Sprintf("ticket: invalid event.result %q (allowed: %s)", result, allowedEnumValues(ledger.EventResultEnum)))
 		}
+	}
+	if err := errs.Err(); err != nil {
+		return err
 	}
 	prevState := ""
 	if prev != nil {
@@ -110,6 +121,15 @@ func displayState(s string) string {
 		return "<new>"
 	}
 	return s
+}
+
+func allowedEnumValues(values map[string]struct{}) string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return strings.Join(out, ", ")
 }
 
 func hasPositiveStateNumber(v any) bool {
