@@ -47,7 +47,8 @@ func suggestCommit(latest ledger.Row, worklog []ledger.Row, allowUnaudited bool,
 	fmt.Fprintln(stdout, "## Verification")
 	evidence := stringSliceFromRow(latest, "evidence")
 	if len(evidence) == 0 {
-		fmt.Fprintln(stdout, "- TODO: paste the commands you ran (ldgr verify, go test, etc.)")
+		fmt.Fprintln(stdout, "- No verification evidence recorded on the ticket.")
+		fmt.Fprintln(stdout, "- Add ticket evidence before using this scaffold for merge or release notes.")
 	} else {
 		for _, e := range evidence {
 			fmt.Fprintf(stdout, "- %s\n", e)
@@ -82,7 +83,8 @@ func suggestCommitState(latest ledger.Row, worklog []ledger.Row, allowUnaudited 
 	fmt.Fprintln(stdout, "## Verification")
 	evidence := stringSliceFromRow(latest, "evidence")
 	if len(evidence) == 0 {
-		fmt.Fprintln(stdout, "- TODO: paste the commands you ran (ldgr verify, go test, etc.)")
+		fmt.Fprintln(stdout, "- No verification evidence recorded on the ticket.")
+		fmt.Fprintln(stdout, "- Add ticket evidence before using this scaffold for merge or release notes.")
 	} else {
 		for _, e := range evidence {
 			fmt.Fprintf(stdout, "- %s\n", e)
