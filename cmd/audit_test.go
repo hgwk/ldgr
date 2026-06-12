@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +19,21 @@ func driveToAuditReady(t *testing.T, target, ticket string) int {
 	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(fmt.Sprintf(`{"ticket":%q,"status":"audit_ready","evidence":["go test"]}`, ticket)), &bytes.Buffer{}, &bytes.Buffer{})
 	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
 	return int(rows[len(rows)-1]["n"].(float64))
+}
+
+func setGitEvidencePolicy(t *testing.T, target, policy string) {
+	t.Helper()
+	path := filepath.Join(target, "ledger", "config.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	body := strings.TrimSpace(string(data))
+	body = strings.TrimSuffix(body, "}")
+	body += fmt.Sprintf(",\n  \"git_evidence\": %q\n}\n", policy)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 }
 
 func TestAuditPass_AutoSetsReviewedN(t *testing.T) {
@@ -50,6 +66,33 @@ func TestAuditPass_FailsWithoutPriorAuditReady(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "audit_ready") {
 		t.Fatalf("error should mention audit_ready, got: %s", stderr.String())
+	}
+}
+
+func TestAuditPass_GitEvidenceFailRejectsDoneWithoutCommitEvidence(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	setGitEvidencePolicy(t, target, "fail")
+	driveToAuditReady(t, target, "AUP-GIT")
+	var stderr bytes.Buffer
+	code := RunAuditCLI([]string{"pass", "--target", target, "--ticket", "AUP-GIT", "--evidence", "go test"}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected git evidence gate to reject done")
+	}
+	if !strings.Contains(stderr.String(), "commit:<sha>") {
+		t.Fatalf("stderr should explain git evidence requirement, got: %s", stderr.String())
+	}
+}
+
+func TestAuditPass_GitEvidenceFailAcceptsCommitEvidence(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	setGitEvidencePolicy(t, target, "fail")
+	driveToAuditReady(t, target, "AUP-GIT-OK")
+	var stderr bytes.Buffer
+	code := RunAuditCLI([]string{"pass", "--target", target, "--ticket", "AUP-GIT-OK", "--evidence", "go test", "--evidence", "commit:abc1234"}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr)
+	if code != 0 {
+		t.Fatalf("expected commit evidence to pass: %s", stderr.String())
 	}
 }
 

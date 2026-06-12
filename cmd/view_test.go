@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"net"
-	"strconv"
-	"strings"
 	"testing"
 )
 
-func TestView_PortInUsePrintsActionableHint(t *testing.T) {
+func TestListenViewPort_ChoosesNextPortWhenRequestedPortIsBusy(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -16,15 +13,23 @@ func TestView_PortInUsePrintsActionableHint(t *testing.T) {
 	defer ln.Close()
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	var stderr bytes.Buffer
-	code := RunViewCLI([]string{"--port", strconv.Itoa(port), "--no-open"}, &bytes.Buffer{}, &stderr)
-	if code == 0 {
-		t.Fatalf("expected bind failure")
+	next, selected, err := listenViewPort(port)
+	if err != nil {
+		t.Fatalf("listenViewPort: %v", err)
 	}
-	msg := stderr.String()
-	for _, want := range []string{"already in use", "http://127.0.0.1:", "ldgr view --port"} {
-		if !strings.Contains(msg, want) {
-			t.Fatalf("stderr missing %q: %s", want, msg)
-		}
+	defer next.Close()
+	if selected == port {
+		t.Fatalf("selected busy port %d", port)
+	}
+}
+
+func TestListenViewPort_PortZeroUsesOSAssignedPort(t *testing.T) {
+	ln, selected, err := listenViewPort(0)
+	if err != nil {
+		t.Fatalf("listenViewPort: %v", err)
+	}
+	defer ln.Close()
+	if selected <= 0 {
+		t.Fatalf("selected invalid port %d", selected)
 	}
 }

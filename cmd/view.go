@@ -22,7 +22,7 @@ func init() {
 // RunViewCLI starts the read-only viewer on localhost.
 func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("view")
-	port := fs.Int("port", 3030, "")
+	port := fs.Int("port", 3030, "port to listen on; 0 asks the OS for an open port")
 	target := fs.String("target", "", "single-project mode: serve only this directory")
 	noOpen := fs.Bool("no-open", false, "do not open the viewer in a browser")
 	if err := fs.Parse(args); err != nil {
@@ -51,12 +51,13 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 		srv = viewer.NewServer(store)
 	}
 
-	addr := fmt.Sprintf("127.0.0.1:%d", *port)
-	ln, err := net.Listen("tcp", addr)
+	ln, _, err := listenViewPort(*port)
 	if err != nil {
+		addr := fmt.Sprintf("127.0.0.1:%d", *port)
 		fmt.Fprint(stderr, bindFailureMessage(addr, *port, err))
 		return 1
 	}
+	addr := ln.Addr().String()
 	url := fmt.Sprintf("http://%s", addr)
 	fmt.Fprintf(stdout, "ldgr view listening on %s\n", url)
 	if !*noOpen {
@@ -69,6 +70,29 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func listenViewPort(start int) (net.Listener, int, error) {
+	if start == 0 {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, 0, err
+		}
+		return ln, ln.Addr().(*net.TCPAddr).Port, nil
+	}
+	var lastErr error
+	for port := start; port < start+100 && port <= 65535; port++ {
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln, port, nil
+		}
+		lastErr = err
+		if !isAddressInUse(err) {
+			return nil, port, err
+		}
+	}
+	return nil, start, lastErr
 }
 
 func bindFailureMessage(addr string, port int, err error) string {

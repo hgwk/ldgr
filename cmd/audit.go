@@ -196,6 +196,10 @@ func appendTicketEvent(dir string, input map[string]any, stdout, stderr io.Write
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	if err := enforceGitCompletionEvidence(dir, row); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	out, err := ledger.Append(filepath.Join(dir, "ledger", "tickets.jsonl"), ldgrLockPath(dir), ledger.Row(row))
 	if err != nil {
 		fmt.Fprintln(stderr, err)

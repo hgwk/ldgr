@@ -3,7 +3,10 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
+
+	"github.com/hgwk/ldgr/internal/config"
 )
 
 func warnMissingGitCompletionEvidence(row map[string]any, stderr io.Writer) {
@@ -15,6 +18,21 @@ func warnMissingGitCompletionEvidence(row map[string]any, stderr io.Writer) {
 		id = "ticket"
 	}
 	fmt.Fprintf(stderr, "warning: %s is done without Git evidence; add evidence commit:<sha>, pr:<url-or-number>, or no_commit:<reason>\n", id)
+}
+
+func enforceGitCompletionEvidence(dir string, row map[string]any) error {
+	if rowStatus(row) != "done" || hasGitCompletionEvidence(row) {
+		return nil
+	}
+	cfg, err := config.Load(filepath.Join(dir, "ledger", "config.json"))
+	if err != nil || strings.ToLower(strings.TrimSpace(cfg.GitEvidence)) != "fail" {
+		return nil
+	}
+	id := rowID(row)
+	if id == "" {
+		id = "ticket"
+	}
+	return fmt.Errorf("%s is done without Git evidence; add evidence commit:<sha>, pr:<url-or-number>, or no_commit:<reason>, or set ledger/config.json git_evidence to warn/off", id)
 }
 
 func hasGitCompletionEvidence(row map[string]any) bool {
