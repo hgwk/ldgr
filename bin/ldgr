@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+SCRIPT=$0
+while [ -L "$SCRIPT" ]; do
+  DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)
+  TARGET=$(readlink "$SCRIPT")
+  case "$TARGET" in
+    /*) SCRIPT=$TARGET ;;
+    *) SCRIPT=$DIR/$TARGET ;;
+  esac
+done
+DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)
+NATIVE="$DIR/native/ldgr"
+if [ -x "$NATIVE" ]; then
+  exec "$NATIVE" "$@"
+fi
+cd "$DIR/.."
+exec go run . "$@"

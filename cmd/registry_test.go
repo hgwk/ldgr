@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -73,5 +74,62 @@ func TestRegistryRepair_HoldsLockDuringRebuild(t *testing.T) {
 	code := <-done
 	if code == 0 {
 		t.Fatalf("expected repair to fail while lock is held by another writer")
+	}
+}
+
+func TestRegistryList_ShowsMissingPaths(t *testing.T) {
+	regDir := t.TempDir()
+	regPath := filepath.Join(regDir, "registry.json")
+	store := registry.New(regPath, filepath.Join(regDir, "registry.lock"))
+	if err := store.Register(registry.Project{
+		ProjectID: "id1",
+		Slug:      "ghost",
+		Paths:     []string{"/nonexistent/path/x"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	if code := RunRegistryCLI([]string{"list"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("list failed")
+	}
+	if !strings.Contains(out.String(), "missing") {
+		t.Fatalf("expected missing marker, got: %s", out.String())
+	}
+}
+
+func TestRegistryPrune_RemovesMissingPaths(t *testing.T) {
+	regDir := t.TempDir()
+	regPath := filepath.Join(regDir, "registry.json")
+	store := registry.New(regPath, filepath.Join(regDir, "registry.lock"))
+	if err := store.Register(registry.Project{
+		ProjectID: "id1",
+		Slug:      "ghost",
+		Paths:     []string{"/nonexistent/path/x"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	if code := RunRegistryCLI([]string{"prune"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("prune failed")
+	}
+	r, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(r.Projects) != 0 {
+		t.Fatalf("expected pruned registry, got %+v", r)
+	}
+}
+
+func TestRegistryList_SortsByLastSeenDesc(t *testing.T) {
+	projects := []registry.Project{
+		{ProjectID: "old", LastSeen: "2026-01-01T00:00:00Z"},
+		{ProjectID: "new", LastSeen: "2026-06-01T00:00:00Z"},
+	}
+	sortProjectsByLastSeen(projects)
+	if projects[0].ProjectID != "new" {
+		t.Fatalf("expected newest project first, got %+v", projects)
 	}
 }

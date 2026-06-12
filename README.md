@@ -197,6 +197,12 @@ Set `ledger/config.json` field `git_evidence` to tune completion evidence:
 ## Install
 
 ```bash
+npm install -g @hgwk/ldgr
+```
+
+Or install from source with Go:
+
+```bash
 go install github.com/hgwk/ldgr@latest
 ```
 
@@ -225,7 +231,7 @@ install -m 0755 ldgr_*/ldgr ~/.local/bin/ldgr
 ```
 
 Use `~/.local/bin/ldgr` for local installs. A Homebrew tap is not published yet;
-until then, use `go install` or the release tarball.
+until then, use npm, `go install`, or the release tarball.
 
 ## Integrate into a repo
 

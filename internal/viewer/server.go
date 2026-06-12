@@ -3,6 +3,7 @@ package viewer
 import (
 	"errors"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -65,6 +66,9 @@ func NewServer(store *registry.Store) *Server {
 			if err != nil {
 				return nil, err
 			}
+			sort.SliceStable(r.Projects, func(i, j int) bool {
+				return r.Projects[i].LastSeen > r.Projects[j].LastSeen
+			})
 			out := make([]projectListEntry, 0, len(r.Projects))
 			for _, p := range r.Projects {
 				out = append(out, projectListEntry{

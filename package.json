@@ -1,0 +1,25 @@
+{
+  "name": "@hgwk/ldgr",
+  "version": "0.3.5",
+  "description": "Append-only agent task ledger and local project viewer.",
+  "license": "MIT",
+  "bin": {
+    "ldgr": "./bin/ldgr"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node ./bin/install.js",
+    "test": "go test ./... -count=1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hgwk/ldgr.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

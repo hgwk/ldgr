@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   quality:
@@ -30,6 +31,15 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./... -count=1 -race
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: npm package smoke
+        run: |
+          node -c bin/install.js
+          sh -n bin/ldgr
+          npm pack --dry-run
 
   build:
     needs: quality
@@ -88,3 +98,17 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/SHA256SUMS
+
+  publish-npm:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm publish --access public
