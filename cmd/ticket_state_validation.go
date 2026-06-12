@@ -110,7 +110,7 @@ func validateStateTicketWrite(row map[string]any, prev ledger.Row) error {
 	case "rework":
 		notes, _ := event["notes"].(string)
 		if role != "auditor" || event["result"] != "changes_requested" || !hasPositiveStateNumber(event["reviewed_n"]) || notes == "" {
-			return errors.New("ticket: state=rework requires event.role=auditor, event.result=changes_requested, event.reviewed_n, and event.notes")
+			return errors.New("ticket: state=rework is an auditor changes-requested decision, not implementer rework start; to start fixes after rework, append state=doing with event.role=implementer; to request changes, use event.role=auditor, event.result=changes_requested, event.reviewed_n, and event.notes")
 		}
 	}
 	return nil

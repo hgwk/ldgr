@@ -28,6 +28,19 @@ func TestDispatch_NoArgs_PrintsUsage(t *testing.T) {
 	}
 }
 
+func TestDispatch_Help(t *testing.T) {
+	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
+		var stdout, stderr bytes.Buffer
+		code := Dispatch(args, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("Dispatch(%v) exit = %d, stderr = %q", args, code, stderr.String())
+		}
+		if got := stdout.String(); !strings.Contains(got, "Subcommands:") || !strings.Contains(got, "view") {
+			t.Fatalf("Dispatch(%v) help output incomplete: %q", args, got)
+		}
+	}
+}
+
 func TestDispatch_Version(t *testing.T) {
 	for _, args := range [][]string{{"version"}, {"--version"}, {"-V"}} {
 		var stdout, stderr bytes.Buffer

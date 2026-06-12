@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.5 - 2026-06-12
+
+### Changed
+
+- Make `ldgr view` port conflicts actionable by showing the existing viewer URL,
+  listener process, and alternate port command.
+- Clarify that `state=rework` is an auditor changes-requested decision; agents
+  starting fixes after rework should append `state=doing`.
+- Add top-level `ldgr help`, `ldgr --help`, and `ldgr -h` output.
+
 ## v0.3.4 - 2026-06-11
 
 ### Changed

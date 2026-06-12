@@ -66,3 +66,24 @@ func TestTicketEventState_RejectsDirectDone(t *testing.T) {
 		t.Fatalf("stderr should name rejected edge, got: %s", stderr.String())
 	}
 }
+
+func TestTicketEventState_ReworkImplementerErrorSuggestsDoing(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-REWORK","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-REWORK","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-REWORK","state":"review","evidence":["go test"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var stderr bytes.Buffer
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-REWORK","state":"rework","event":{"role":"implementer","summary":"rework started","notes":""}}`), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected implementer rework row rejection")
+	}
+	msg := stderr.String()
+	for _, want := range []string{"state=rework is an auditor", "state=doing", "event.role=implementer"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("stderr missing %q: %s", want, msg)
+		}
+	}
+}

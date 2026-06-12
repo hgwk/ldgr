@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -8,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"syscall"
 
 	"github.com/hgwk/ldgr/internal/viewer"
 )
@@ -51,7 +54,7 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		fmt.Fprintf(stderr, "cannot bind %s: %v\n", addr, err)
+		fmt.Fprint(stderr, bindFailureMessage(addr, *port, err))
 		return 1
 	}
 	url := fmt.Sprintf("http://%s", addr)
@@ -66,6 +69,52 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func bindFailureMessage(addr string, port int, err error) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "cannot bind %s: %v\n", addr, err)
+	if !isAddressInUse(err) {
+		return b.String()
+	}
+	fmt.Fprintf(&b, "port %d is already in use. An ldgr viewer may already be running at http://%s\n", port, addr)
+	if owner := listenOwner(addr); owner != "" {
+		fmt.Fprintf(&b, "listener: %s\n", owner)
+	}
+	fmt.Fprintf(&b, "open the existing viewer, stop the listener, or choose another port: ldgr view --port %d\n", port+1)
+	return b.String()
+}
+
+func isAddressInUse(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) || strings.Contains(err.Error(), "address already in use")
+}
+
+func listenOwner(addr string) string {
+	if _, err := exec.LookPath("lsof"); err != nil {
+		return ""
+	}
+	out, err := exec.Command("lsof", "-nP", "-iTCP@"+addr, "-sTCP:LISTEN", "-FpPc").Output()
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	pid := ""
+	command := ""
+	for _, line := range lines {
+		if strings.HasPrefix(line, "p") && len(line) > 1 {
+			pid = line[1:]
+		}
+		if strings.HasPrefix(line, "c") && len(line) > 1 {
+			command = line[1:]
+		}
+	}
+	if pid == "" {
+		return ""
+	}
+	if command == "" {
+		return "pid " + pid
+	}
+	return fmt.Sprintf("pid %s (%s)", pid, command)
 }
 
 func openBrowser(url string) error {
