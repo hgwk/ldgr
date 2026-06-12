@@ -14,6 +14,12 @@ ldgr verify
 ldgr view
 ```
 
+## Companion Tool Roles
+
+- `cduo doctor` checks pair-agent runtime setup and project hook readiness.
+- `ldgr verify` checks ledger lifecycle, audit, worklog, and Git evidence.
+- `hrns audit` checks repository structure, docs, config, and code guardrails.
+
 ## Migrating from old layouts
 
 If your repository has root-level `agent-tickets.jsonl`, `agent-worklog.jsonl`, or `goal.json`,
@@ -194,23 +200,26 @@ Make sure `$(go env GOPATH)/bin` is on your `$PATH`. macOS/Linux:
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
+For local development and manual installs, use this shared convention:
+
+```bash
+install -m 0755 ldgr ~/.local/bin/ldgr
+```
+
+If another PATH directory must expose `ldgr`, prefer a symlink back to
+`~/.local/bin/ldgr` instead of copying multiple binaries.
+
 For release tarballs (after a `v*` tag has been published):
 
 ```bash
 curl -sSL -o ldgr.tar.gz \
   https://github.com/hgwk/ldgr/releases/download/v0.1.0/ldgr_0.1.0_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
 tar -xzf ldgr.tar.gz
-sudo mv ldgr_*/ldgr /usr/local/bin/ldgr
+install -m 0755 ldgr_*/ldgr ~/.local/bin/ldgr
 ```
 
-Homebrew-on-Apple-Silicon users often prefer:
-
-```bash
-install -m 0755 ldgr_*/ldgr /opt/homebrew/bin/ldgr
-```
-
-Use `/usr/local/bin/ldgr` for Intel Homebrew or non-Homebrew installs. A Homebrew
-tap is not published yet; until then, use `go install` or the release tarball.
+Use `~/.local/bin/ldgr` for local installs. A Homebrew tap is not published yet;
+until then, use `go install` or the release tarball.
 
 ## Integrate into a repo
 
@@ -226,6 +235,10 @@ ldgr view --target .                     # dashboard for this project only
 body to `~/.ldgr/operating-guide.md` and add a top-of-file absolute
 `@.../.ldgr/operating-guide.md` reference to both `AGENTS.md` and `CLAUDE.md`,
 creating those files when missing.
+
+This is the shared guide-pointer convention used by `cduo`, `ldgr`, and `hrns`:
+the home-local guide holds the long body, while root policy files only carry the
+absolute `@...` pointer and any project-local rules below it.
 
 Sandboxed runners that cannot write the default home-local path can override
 the ldgr home directory with `LDGR_HOME` or `--home`:
