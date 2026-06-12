@@ -15,4 +15,9 @@ if [ -x "$NATIVE" ]; then
   exec "$NATIVE" "$@"
 fi
 cd "$DIR/.."
-exec go run . "$@"
+if [ -f go.mod ] && [ -f main.go ]; then
+  exec go run . "$@"
+fi
+echo "ldgr binary was not installed." >&2
+echo "Reinstall with: npm install -g @hgwk/ldgr@latest" >&2
+exit 1

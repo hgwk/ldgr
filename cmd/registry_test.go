@@ -123,6 +123,55 @@ func TestRegistryPrune_RemovesMissingPaths(t *testing.T) {
 	}
 }
 
+func TestRegistryPrune_DryRunKeepsMissingPaths(t *testing.T) {
+	regDir := t.TempDir()
+	regPath := filepath.Join(regDir, "registry.json")
+	store := registry.New(regPath, filepath.Join(regDir, "registry.lock"))
+	if err := store.Register(registry.Project{
+		ProjectID: "id1",
+		Slug:      "ghost",
+		Paths:     []string{"/nonexistent/path/x"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	if code := RunRegistryCLI([]string{"prune", "--dry-run"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("prune dry-run failed")
+	}
+	r, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(r.Projects) != 1 {
+		t.Fatalf("dry-run should keep registry, got %+v", r)
+	}
+	if !strings.Contains(out.String(), "would prune") {
+		t.Fatalf("expected dry-run text, got %s", out.String())
+	}
+}
+
+func TestRegistryList_JSON(t *testing.T) {
+	regDir := t.TempDir()
+	regPath := filepath.Join(regDir, "registry.json")
+	store := registry.New(regPath, filepath.Join(regDir, "registry.lock"))
+	if err := store.Register(registry.Project{
+		ProjectID: "id1",
+		Slug:      "ghost",
+		Paths:     []string{"/nonexistent/path/x"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	if code := RunRegistryCLI([]string{"list", "--json"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("list json failed")
+	}
+	if !strings.Contains(out.String(), `"status":"missing"`) {
+		t.Fatalf("expected missing json status, got %s", out.String())
+	}
+}
+
 func TestRegistryList_SortsByLastSeenDesc(t *testing.T) {
 	projects := []registry.Project{
 		{ProjectID: "old", LastSeen: "2026-01-01T00:00:00Z"},

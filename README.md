@@ -225,7 +225,7 @@ For release tarballs (after a `v*` tag has been published):
 
 ```bash
 curl -sSL -o ldgr.tar.gz \
-  https://github.com/hgwk/ldgr/releases/download/v0.1.0/ldgr_0.1.0_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+  https://github.com/hgwk/ldgr/releases/download/v0.3.5/ldgr_0.3.5_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
 tar -xzf ldgr.tar.gz
 install -m 0755 ldgr_*/ldgr ~/.local/bin/ldgr
 ```
@@ -241,6 +241,15 @@ ldgr init --language ko                  # optional: ledger free-text fields use
 ldgr hooks install                       # pre-commit verify
 ldgr instructions install                # AGENTS.md / CLAUDE.md pointer + home-local body
 ldgr view --target .                     # dashboard for this project only
+```
+
+Registry cleanup helpers:
+
+```bash
+ldgr registry list
+ldgr registry list --json
+ldgr registry prune --dry-run
+ldgr registry prune
 ```
 
 `ldgr init` and `ldgr instructions install` write the authoritative instruction
