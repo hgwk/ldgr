@@ -1,6 +1,9 @@
 package verify
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVerify_WarnsOnWeakDone(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
@@ -35,6 +38,38 @@ func TestVerify_LegacyDoneWarnsOnMissingGitEvidence(t *testing.T) {
 	if !hasWarn(report, "DONE_MISSING_GIT_EVIDENCE") {
 		t.Fatalf("expected DONE_MISSING_GIT_EVIDENCE warn, got %+v", report)
 	}
+}
+
+func TestVerify_GitEvidencePolicyFailPromotesMissingGitEvidence(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": configJSONWithGitEvidence("fail"),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"GD-FAIL","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":1,"task":"done","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasFail(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("expected DONE_MISSING_GIT_EVIDENCE fail, got %+v", report)
+	}
+}
+
+func TestVerify_GitEvidencePolicyOffSuppressesMissingGitEvidence(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": configJSONWithGitEvidence("off"),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"GD-OFF","parent_ticket":"BUG","agent":"codex","role":"audit","category":"bug","status":"done","audit_result":"pass","evidence":["go test"],"reviewed_n":1,"task":"done","scope":"repo","paths":[],"blocked_by":[],"branch":""}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if hasWarn(report, "DONE_MISSING_GIT_EVIDENCE") || hasFail(report, "DONE_MISSING_GIT_EVIDENCE") {
+		t.Fatalf("did not expect DONE_MISSING_GIT_EVIDENCE issue, got %+v", report)
+	}
+}
+
+func configJSONWithGitEvidence(policy string) string {
+	return strings.TrimSuffix(validConfigJSON(), "}") + ",\n  \"git_evidence\": \"" + policy + "\"\n}"
 }
 
 func TestVerify_LegacyDoneAcceptsPREvidence(t *testing.T) {

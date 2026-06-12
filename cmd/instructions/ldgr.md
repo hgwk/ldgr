@@ -25,6 +25,9 @@ Do not edit ledger JSONL files directly. Use `ldgr`.
   which criteria passed.
 - `done` evidence should include `commit:<sha>`, `pr:<url-or-number>`, or
   `no_commit:<reason>` so completed work is traceable.
+- Set `ledger/config.json` `git_evidence` to `fail` when a repo requires Git
+  evidence before completion, or `off` for repos where that guardrail is not
+  meaningful.
 - Prefer existing repo structure, scripts, modules, services, schemas, SDKs,
   and design primitives before adding new ones.
 - Keep changes scoped. Do not let multiple agents edit the same file at once.

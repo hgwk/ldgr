@@ -19,6 +19,7 @@ type Config struct {
 	LogGoalChanges   bool     `json:"log_goal_changes"`
 	WritingLanguage  string   `json:"writing_language,omitempty"`
 	Status           string   `json:"status,omitempty"`
+	GitEvidence      string   `json:"git_evidence,omitempty"`
 }
 
 type rawConfig struct {
@@ -32,6 +33,7 @@ type rawConfig struct {
 	LogGoalChanges   bool            `json:"log_goal_changes"`
 	WritingLanguage  string          `json:"writing_language"`
 	Status           string          `json:"status"`
+	GitEvidence      string          `json:"git_evidence"`
 }
 
 type legacyParent struct {
@@ -73,6 +75,7 @@ func Load(path string) (Config, error) {
 		LogGoalChanges:   raw.LogGoalChanges,
 		WritingLanguage:  raw.WritingLanguage,
 		Status:           raw.Status,
+		GitEvidence:      raw.GitEvidence,
 	}
 	if c.SchemaVersion == 0 && raw.Version != 0 {
 		c.SchemaVersion = raw.Version

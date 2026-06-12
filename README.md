@@ -188,6 +188,12 @@ Use `ldgr verify --strict` only when you've intentionally cleaned or accepted al
 historical compatibility warnings. A state-model rewrite can still retain
 historical lifecycle/worklog violations behind the baseline.
 
+Set `ledger/config.json` field `git_evidence` to tune completion evidence:
+
+- `warn` or unset: warn when `done` lacks `commit:`, `pr:`, or `no_commit:`
+- `fail`: fail verification for completed work without Git evidence
+- `off`: suppress this one Git-evidence guardrail
+
 ## Install
 
 ```bash

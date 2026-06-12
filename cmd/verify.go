@@ -15,19 +15,19 @@ func init() {
 
 func RunVerifyCLI(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("verify")
-	target := fs.String("target", "", "")
-	strict := fs.Bool("strict", false, "")
-	summary := fs.Bool("summary", false, "")
-	verbose := fs.Bool("verbose", false, "")
-	newOnly := fs.Bool("new-only", false, "")
-	activeOnly := fs.Bool("active-only", false, "")
-	migrationReport := fs.Bool("migration-report", false, "")
-	compareLocal := fs.Bool("compare-local", false, "")
-	withHrns := fs.Bool("with-hrns", false, "")
+	target := fs.String("target", "", "repository root to verify; defaults to the current directory")
+	strict := fs.Bool("strict", false, "promote all warnings to failures after baseline/policy handling")
+	summary := fs.Bool("summary", false, "print grouped issue counts instead of only per-issue lines")
+	verbose := fs.Bool("verbose", false, "print both per-issue lines and the grouped summary")
+	newOnly := fs.Bool("new-only", false, "check only rows after --since-ticket-n and/or --since-worklog-n")
+	activeOnly := fs.Bool("active-only", false, "show only issues tied to currently active tickets/worklogs")
+	migrationReport := fs.Bool("migration-report", false, "print a legacy-to-v1 migration readiness summary")
+	compareLocal := fs.Bool("compare-local", false, "list package scripts that may run project-local ledger verifiers")
+	withHrns := fs.Bool("with-hrns", false, "run hrns audit --all after ldgr verification when hrns is installed")
 	codeSize := fs.Bool("code-size", false, "warn on source files over 300 lines")
-	sinceN := fs.Int("since-n", 0, "")
-	sinceTicketN := fs.Int("since-ticket-n", 0, "")
-	sinceWorklogN := fs.Int("since-worklog-n", 0, "")
+	sinceN := fs.Int("since-n", 0, "baseline shorthand for both --since-ticket-n and --since-worklog-n")
+	sinceTicketN := fs.Int("since-ticket-n", 0, "ignore ticket-row issues at or before this n when --new-only is set")
+	sinceWorklogN := fs.Int("since-worklog-n", 0, "ignore worklog-row issues at or before this n when --new-only is set")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

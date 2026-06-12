@@ -86,6 +86,7 @@ func runWith(targetDir string, strict bool) (Report, error) {
 	checkArchivedProjectActiveTickets(&rep, cfg, ticketRows, stateMode)
 	checkLocalVerifierDrift(&rep, targetDir)
 	checkLegacySources(&rep, targetDir)
+	applyGitEvidencePolicy(&rep, cfg.GitEvidence)
 
 	if strict {
 		rep.Fails = append(rep.Fails, rep.Warns...)
