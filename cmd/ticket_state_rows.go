@@ -54,7 +54,14 @@ func normalizeStateTicketEvent(dir string, input map[string]any, stderr io.Write
 	}
 	var base map[string]any
 	var prevRow ledger.Row
+	invalidated := invalidatedTicketNs(rows)
 	for _, r := range rows {
+		if _, isCompanion := r["invalidates_n"]; isCompanion {
+			continue
+		}
+		if n, ok := numberAsPositiveInt(r["n"]); ok && invalidated[n] {
+			continue
+		}
 		if r["id"] == id {
 			base = make(map[string]any)
 			for k, v := range r {
@@ -88,4 +95,14 @@ func normalizeStateTicketEvent(dir string, input map[string]any, stderr io.Write
 		return nil, err
 	}
 	return resolved, nil
+}
+
+func invalidatedTicketNs(rows []ledger.Row) map[int]bool {
+	out := map[int]bool{}
+	for _, r := range rows {
+		if n, ok := numberAsPositiveInt(r["invalidates_n"]); ok {
+			out[n] = true
+		}
+	}
+	return out
 }

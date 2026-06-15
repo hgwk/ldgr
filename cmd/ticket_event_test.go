@@ -173,6 +173,63 @@ func TestTicketEvent_AllowsUnapprovedOrphanDropWithApprovalCheck(t *testing.T) {
 	}
 }
 
+func TestTicketEvent_StateEventAfterCorrectionDoesNotCarryInvalidatesN(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+
+	add := `{
+		"id":"duplicate-plan",
+		"parent":"ROOT",
+		"type":"task",
+		"state":"ready",
+		"area":"ops",
+		"priority":"P2",
+		"title":"duplicate plan",
+		"blocked_by":[],
+		"acceptance":[],
+		"evidence":[],
+		"event":{"actor":"claude","role":"planner","summary":"created","notes":"user-approved IA"}
+	}`
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("add failed")
+	}
+	drop := `{
+		"id":"duplicate-plan",
+		"state":"dropped",
+		"evidence":["replacement:ops-plan"],
+		"event":{"actor":"codex","role":"auditor","summary":"dropped duplicate","notes":"duplicate_ready_ticket"}
+	}`
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(drop), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("drop failed")
+	}
+	correction := `{
+		"id":"duplicate-plan",
+		"invalidates_n":2,
+		"event":{"actor":"codex","role":"auditor","summary":"invalidate mistaken drop","notes":"restore ready row"}
+	}`
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(correction), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("correction failed")
+	}
+	redrop := `{
+		"id":"duplicate-plan",
+		"state":"dropped",
+		"evidence":["replacement:ops-plan"],
+		"event":{"actor":"codex","role":"auditor","summary":"dropped duplicate","notes":"duplicate_ready_ticket"}
+	}`
+	if code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(redrop), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("redrop failed")
+	}
+
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	latest := rows[len(rows)-1]
+	if latest["state"] != "dropped" {
+		t.Fatalf("latest should be dropped, got %+v", latest)
+	}
+	if _, has := latest["invalidates_n"]; has {
+		t.Fatalf("ordinary event should not carry invalidates_n: %+v", latest)
+	}
+}
+
 func TestTicketEvent_OverlaysNotesAndDecision(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
