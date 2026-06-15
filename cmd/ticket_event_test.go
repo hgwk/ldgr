@@ -103,6 +103,76 @@ func TestTicketEvent_RejectsUnknownTicket(t *testing.T) {
 	}
 }
 
+func TestTicketEvent_RejectsUnapprovedOrphanDropWithoutApprovalCheck(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+
+	add := `{
+		"id":"ops-console",
+		"parent":"ROOT",
+		"type":"task",
+		"state":"ready",
+		"area":"ops",
+		"priority":"P2",
+		"title":"ops console",
+		"blocked_by":[],
+		"acceptance":[],
+		"evidence":[],
+		"event":{"actor":"claude","role":"planner","summary":"created","notes":"user-approved IA"}
+	}`
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("add failed")
+	}
+
+	drop := `{
+		"id":"ops-console",
+		"state":"dropped",
+		"event":{"actor":"codex","role":"auditor","summary":"dropped","notes":"unapproved_orphan_ticket: auto cleanup"}
+	}`
+	var stderr bytes.Buffer
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(drop), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected unapproved_orphan_ticket drop to fail")
+	}
+	if !strings.Contains(stderr.String(), "approval_checked:") || !strings.Contains(stderr.String(), "approval_not_found:") {
+		t.Fatalf("stderr should require structured approval evidence: %s", stderr.String())
+	}
+}
+
+func TestTicketEvent_AllowsUnapprovedOrphanDropWithApprovalCheck(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+
+	add := `{
+		"id":"stale-plan",
+		"parent":"ROOT",
+		"type":"task",
+		"state":"ready",
+		"area":"ops",
+		"priority":"P2",
+		"title":"stale plan",
+		"blocked_by":[],
+		"acceptance":[],
+		"evidence":[],
+		"event":{"actor":"worker","role":"planner","summary":"created","notes":"no approval marker"}
+	}`
+	if code := RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("add failed")
+	}
+
+	drop := `{
+		"id":"stale-plan",
+		"state":"dropped",
+		"evidence":["approval_checked: user thread, worklog, and recent ticket context","approval_not_found: no user request or owner handoff found"],
+		"event":{"actor":"codex","role":"auditor","summary":"dropped","notes":"unapproved_orphan_ticket: checked before cleanup"}
+	}`
+	var stderr bytes.Buffer
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(drop), &bytes.Buffer{}, &stderr)
+	if code != 0 {
+		t.Fatalf("drop with approval check should pass: %s", stderr.String())
+	}
+}
+
 func TestTicketEvent_OverlaysNotesAndDecision(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")

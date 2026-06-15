@@ -23,6 +23,12 @@ Do not edit ledger JSONL files directly. Use `ldgr`.
   verification did not run.
 - Carry explicit success criteria into `review`/`done`; evidence should show
   which criteria passed.
+- When a user explicitly approves or asks to create tickets, record
+  `user_approved:<short reason>` in `event.notes` or `evidence`.
+- Do not drop another agent's `ready`/`backlog` planning ticket as
+  `unapproved_orphan_ticket` unless you first check the user thread, recent
+  worklog, and ticket context. Such drops require structured evidence:
+  `approval_checked:<where checked>` and `approval_not_found:<why>`.
 - `done` evidence should include `commit:<sha>`, `pr:<url-or-number>`, or
   `no_commit:<reason>` so completed work is traceable.
 - Set `ledger/config.json` `git_evidence` to `fail` when a repo requires Git

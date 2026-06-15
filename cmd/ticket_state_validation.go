@@ -112,8 +112,45 @@ func validateStateTicketWrite(row map[string]any, prev ledger.Row) error {
 		if role != "auditor" || event["result"] != "changes_requested" || !hasPositiveStateNumber(event["reviewed_n"]) || notes == "" {
 			return errors.New("ticket: state=rework is an auditor changes-requested decision, not implementer rework start; to start fixes after rework, append state=doing with event.role=implementer; to request changes, use event.role=auditor, event.result=changes_requested, event.reviewed_n, and event.notes")
 		}
+	case "dropped":
+		if err := validateDroppedApprovalContext(row); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func validateDroppedApprovalContext(row map[string]any) error {
+	text := strings.ToLower(strings.Join(stateRowText(row), "\n"))
+	if !strings.Contains(text, "unapproved_orphan_ticket") {
+		return nil
+	}
+	if strings.Contains(text, "approval_checked:") && strings.Contains(text, "approval_not_found:") {
+		return nil
+	}
+	return errors.New("ticket: unapproved_orphan_ticket drops require structured evidence: approval_checked:<where checked> and approval_not_found:<why>; user-approved tickets must not be dropped")
+}
+
+func stateRowText(row map[string]any) []string {
+	parts := []string{}
+	if event, _ := row["event"].(map[string]any); event != nil {
+		for _, key := range []string{"summary", "notes", "result"} {
+			if v, _ := event[key].(string); strings.TrimSpace(v) != "" {
+				parts = append(parts, v)
+			}
+		}
+	}
+	for _, key := range []string{"title", "summary", "notes"} {
+		if v, _ := row[key].(string); strings.TrimSpace(v) != "" {
+			parts = append(parts, v)
+		}
+	}
+	for _, v := range row["evidence"].([]any) {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			parts = append(parts, s)
+		}
+	}
+	return parts
 }
 
 func displayState(s string) string {
