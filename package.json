@@ -8,6 +8,7 @@
   },
   "files": [
     "bin/",
+    "docs/integration.md",
     "schemas/",
     "README.md",
     "LICENSE"
