@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hgwk.github.io/ldgr/schemas/registry-prune.schema.json",
+  "title": "ldgr registry prune JSON",
+  "type": "object",
+  "required": ["schema_version", "dry_run", "pruned_count", "project_count", "projects", "paths"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "dry_run": { "type": "boolean" },
+    "pruned_count": { "type": "integer", "minimum": 0 },
+    "project_count": { "type": "integer", "minimum": 0 },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["project_id", "paths"],
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string" },
+          "paths": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "paths": { "type": "array", "items": { "type": "string" } }
+  }
+}

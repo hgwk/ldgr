@@ -266,7 +266,10 @@ Registry JSON output is schema-versioned for dashboards and scripts:
 ```
 
 `ldgr registry prune --json` emits `schema_version`, `dry_run`,
-`pruned_count`, `project_count`, `projects`, and `paths`.
+`pruned_count`, `project_count`, `projects`, and `paths`. `projects` is a
+stable array of `{ "project_id": "...", "paths": [...] }` entries sorted by
+project id. Formal contracts live in `schemas/registry-list.schema.json` and
+`schemas/registry-prune.schema.json`.
 
 `ldgr init` and `ldgr instructions install` write the authoritative instruction
 body to `~/.ldgr/operating-guide.md` and add a top-of-file absolute

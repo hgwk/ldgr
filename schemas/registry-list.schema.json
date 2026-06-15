@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hgwk.github.io/ldgr/schemas/registry-list.schema.json",
+  "title": "ldgr registry list JSON",
+  "type": "object",
+  "required": ["schema_version", "project_count", "path_count", "missing_count", "projects"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project_count": { "type": "integer", "minimum": 0 },
+    "path_count": { "type": "integer", "minimum": 0 },
+    "missing_count": { "type": "integer", "minimum": 0 },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["project_id", "slug", "last_seen", "paths"],
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string" },
+          "slug": { "type": "string" },
+          "name": { "type": "string" },
+          "last_seen": { "type": "string" },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "status"],
+              "additionalProperties": false,
+              "properties": {
+                "path": { "type": "string" },
+                "status": { "enum": ["ok", "missing"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

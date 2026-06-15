@@ -108,6 +108,20 @@ type registryListSummary struct {
 	Projects      []registryProjectStatus `json:"projects"`
 }
 
+type registryPruneProject struct {
+	ProjectID string   `json:"project_id"`
+	Paths     []string `json:"paths"`
+}
+
+type registryPruneSummary struct {
+	SchemaVersion int                    `json:"schema_version"`
+	DryRun        bool                   `json:"dry_run"`
+	PrunedCount   int                    `json:"pruned_count"`
+	ProjectCount  int                    `json:"project_count"`
+	Projects      []registryPruneProject `json:"projects"`
+	Paths         []string               `json:"paths"`
+}
+
 func registryListPayload(projects []registry.Project) registryListSummary {
 	out := make([]registryProjectStatus, 0, len(projects))
 	pathCount := 0
@@ -170,14 +184,7 @@ func runRegistryPrune(args []string, store *registry.Store, stdout, stderr io.Wr
 		}
 	}
 	if *jsonOut {
-		payload := map[string]any{
-			"schema_version": 1,
-			"dry_run":        *dryRun,
-			"pruned_count":   len(missing),
-			"project_count":  len(missingByProject),
-			"projects":       missingByProject,
-			"paths":          missing,
-		}
+		payload := registryPrunePayload(*dryRun, missing, missingByProject)
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(payload); err != nil {
@@ -204,6 +211,29 @@ func runRegistryPrune(args []string, store *registry.Store, stdout, stderr io.Wr
 		fmt.Fprintln(stdout, "registry clean")
 	}
 	return 0
+}
+
+func registryPrunePayload(dryRun bool, missing []string, byProject map[string][]string) registryPruneSummary {
+	sort.Strings(missing)
+	projectIDs := make([]string, 0, len(byProject))
+	for projectID := range byProject {
+		projectIDs = append(projectIDs, projectID)
+	}
+	sort.Strings(projectIDs)
+	projects := make([]registryPruneProject, 0, len(projectIDs))
+	for _, projectID := range projectIDs {
+		paths := append([]string(nil), byProject[projectID]...)
+		sort.Strings(paths)
+		projects = append(projects, registryPruneProject{ProjectID: projectID, Paths: paths})
+	}
+	return registryPruneSummary{
+		SchemaVersion: 1,
+		DryRun:        dryRun,
+		PrunedCount:   len(missing),
+		ProjectCount:  len(projects),
+		Projects:      projects,
+		Paths:         missing,
+	}
 }
 
 func runRegistryRepair(store *registry.Store, registryPath string, stdout, stderr io.Writer) int {

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"embed"
 	"fmt"
 	"io"
 	"os"
@@ -11,25 +10,6 @@ import (
 
 func init() {
 	Commands["instructions"] = RunInstructionsCLI
-}
-
-//go:embed instructions/*.md
-var instructionFS embed.FS
-
-func init() {
-	// Initialized before other init() funcs
-}
-
-var (
-	instructionBody = readEmbedFile("instructions/ldgr.md")
-)
-
-func readEmbedFile(name string) string {
-	data, err := instructionFS.ReadFile(name)
-	if err != nil {
-		panic(err)
-	}
-	return string(data)
 }
 
 const (
@@ -106,10 +86,14 @@ func installInstructions(dir string) error {
 	if err != nil {
 		return err
 	}
+	body, err := loadInstructionBody()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(bodyPath), 0o755); err != nil {
 		return fmt.Errorf("create ldgr home for operating guide %s: %w; set LDGR_HOME or pass --home to a writable directory", filepath.Dir(bodyPath), err)
 	}
-	if err := os.WriteFile(bodyPath, []byte(instructionBody), 0o644); err != nil {
+	if err := os.WriteFile(bodyPath, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write ldgr operating guide %s: %w; set LDGR_HOME or pass --home to a writable directory", bodyPath, err)
 	}
 	for _, oldRel := range legacyBodyRels {

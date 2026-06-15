@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,10 +168,15 @@ func TestRegistryList_JSON(t *testing.T) {
 	if code := RunRegistryCLI([]string{"list", "--json"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("list json failed")
 	}
-	for _, want := range []string{`"schema_version": 1`, `"missing_count": 1`, `"status": "missing"`} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("expected %q in json status, got %s", want, out.String())
-		}
+	var payload registryListSummary
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if payload.SchemaVersion != 1 || payload.MissingCount != 1 {
+		t.Fatalf("unexpected summary: %+v", payload)
+	}
+	if len(payload.Projects) != 1 || payload.Projects[0].Paths[0].Status != "missing" {
+		t.Fatalf("unexpected project status: %+v", payload.Projects)
 	}
 }
 
@@ -190,13 +196,15 @@ func TestRegistryPrune_JSONSummary(t *testing.T) {
 	if code := RunRegistryCLI([]string{"prune", "--dry-run", "--json"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("prune json failed")
 	}
-	for _, want := range []string{`"schema_version": 1`, `"dry_run": true`, `"pruned_count": 1`, `"project_count": 1`} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("expected %q in prune json, got %s", want, out.String())
-		}
+	var payload registryPruneSummary
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), `"id1"`) {
-		t.Fatalf("expected missing json status, got %s", out.String())
+	if payload.SchemaVersion != 1 || !payload.DryRun || payload.PrunedCount != 1 || payload.ProjectCount != 1 {
+		t.Fatalf("unexpected prune summary: %+v", payload)
+	}
+	if len(payload.Projects) != 1 || payload.Projects[0].ProjectID != "id1" {
+		t.Fatalf("expected project id1, got %+v", payload.Projects)
 	}
 }
 
