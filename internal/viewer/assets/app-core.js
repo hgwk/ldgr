@@ -176,6 +176,7 @@ function renderProjectList(projects) {
     if (p.missing) parts.push("missing");
     else {
       parts.push(p.open_tickets + " active");
+      if (p.total_tickets != null) parts.push(p.total_tickets + " total");
       if (p.recent_activity_ts) parts.push("last " + fmtTS(p.recent_activity_ts));
     }
     li.appendChild(el("span", { class: "meta", text: parts.join(" · ") }));

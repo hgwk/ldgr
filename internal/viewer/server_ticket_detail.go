@@ -84,6 +84,16 @@ func activeTicketCount(counts map[string]int) int {
 	return total
 }
 
+func closedTicketCount(counts map[string]int) int {
+	total := 0
+	for state, count := range counts {
+		if isTerminalState(state) {
+			total += count
+		}
+	}
+	return total
+}
+
 func visibleWorklog(rows []ledger.Row) []ledger.Row {
 	invalid := InvalidatedNs(rows)
 	out := make([]ledger.Row, 0, len(rows))

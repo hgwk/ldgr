@@ -43,6 +43,8 @@ func TestServer_ProjectSummaryCountsAuditLifecycleAsActive(t *testing.T) {
 			map[string]any{"n": float64(4), "ts": "2026-05-14T10:03:00Z", "id": "READY-1", "parent": "ROOT", "type": "task", "state": "ready", "title": "ready"},
 			map[string]any{"n": float64(5), "ts": "2026-05-14T10:04:00Z", "id": "REVIEW-1", "parent": "ROOT", "type": "task", "state": "review", "title": "review"},
 			map[string]any{"n": float64(6), "ts": "2026-05-14T10:05:00Z", "id": "REWORK-1", "parent": "ROOT", "type": "task", "state": "rework", "title": "rework"},
+			map[string]any{"n": float64(7), "ts": "2026-05-14T10:06:00Z", "id": "DONE-1", "parent": "ROOT", "type": "task", "state": "done", "title": "done"},
+			map[string]any{"n": float64(8), "ts": "2026-05-14T10:07:00Z", "id": "DROP-1", "parent": "ROOT", "type": "task", "state": "dropped", "title": "dropped"},
 		)
 		return p, nil
 	}
@@ -55,6 +57,12 @@ func TestServer_ProjectSummaryCountsAuditLifecycleAsActive(t *testing.T) {
 	}
 	if arr[0]["open_tickets"] != float64(6) {
 		t.Fatalf("audit lifecycle statuses should count as active, got %+v", arr[0])
+	}
+	if arr[0]["total_tickets"] != float64(8) {
+		t.Fatalf("total_tickets should include terminal rows, got %+v", arr[0])
+	}
+	if arr[0]["done_tickets"] != float64(1) || arr[0]["closed_tickets"] != float64(2) {
+		t.Fatalf("terminal ticket summary wrong: %+v", arr[0])
 	}
 }
 

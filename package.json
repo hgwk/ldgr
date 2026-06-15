@@ -1,6 +1,6 @@
 {
   "name": "@hgwk/ldgr",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Append-only agent task ledger and local project viewer.",
   "license": "MIT",
   "bin": {

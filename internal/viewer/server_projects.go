@@ -27,6 +27,9 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			"paths":              e.Paths,
 			"goal_summary":       "",
 			"open_tickets":       0,
+			"total_tickets":      0,
+			"done_tickets":       0,
+			"closed_tickets":     0,
 			"recent_worklog_ts":  "",
 			"recent_activity_ts": "",
 		}
@@ -35,8 +38,12 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			summary["missing"] = true
 		} else {
 			summary["goal_summary"] = proj.Goal.Summary
-			counts := StatusCounts(LatestTickets(proj.Tickets))
+			latest := LatestTickets(proj.Tickets)
+			counts := StatusCounts(latest)
 			summary["open_tickets"] = activeTicketCount(counts)
+			summary["total_tickets"] = len(latest)
+			summary["done_tickets"] = counts["done"]
+			summary["closed_tickets"] = closedTicketCount(counts)
 			summary["recent_worklog_ts"] = recentWorklogTS(proj.Worklog)
 			summary["recent_activity_ts"] = recentProjectActivityTS(proj.Tickets, proj.Worklog)
 		}
