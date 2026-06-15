@@ -34,6 +34,9 @@ func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	row, err := normalizeTicketAdd(dir, input, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		if isStateTicketInput(input) {
+			fmt.Fprintln(stderr, "hint: run `ldgr ticket add --example` for a complete state-model JSON payload")
+		}
 		return 1
 	}
 

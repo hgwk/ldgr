@@ -167,7 +167,35 @@ func TestRegistryList_JSON(t *testing.T) {
 	if code := RunRegistryCLI([]string{"list", "--json"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("list json failed")
 	}
-	if !strings.Contains(out.String(), `"status":"missing"`) {
+	for _, want := range []string{`"schema_version": 1`, `"missing_count": 1`, `"status": "missing"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("expected %q in json status, got %s", want, out.String())
+		}
+	}
+}
+
+func TestRegistryPrune_JSONSummary(t *testing.T) {
+	regDir := t.TempDir()
+	regPath := filepath.Join(regDir, "registry.json")
+	store := registry.New(regPath, filepath.Join(regDir, "registry.lock"))
+	if err := store.Register(registry.Project{
+		ProjectID: "id1",
+		Slug:      "ghost",
+		Paths:     []string{"/nonexistent/path/x"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	if code := RunRegistryCLI([]string{"prune", "--dry-run", "--json"}, store, regPath, out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("prune json failed")
+	}
+	for _, want := range []string{`"schema_version": 1`, `"dry_run": true`, `"pruned_count": 1`, `"project_count": 1`} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("expected %q in prune json, got %s", want, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), `"id1"`) {
 		t.Fatalf("expected missing json status, got %s", out.String())
 	}
 }

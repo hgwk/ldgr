@@ -250,7 +250,23 @@ ldgr registry list
 ldgr registry list --json
 ldgr registry prune --dry-run
 ldgr registry prune
+ldgr registry prune --dry-run --json
 ```
+
+Registry JSON output is schema-versioned for dashboards and scripts:
+
+```json
+{
+  "schema_version": 1,
+  "project_count": 3,
+  "path_count": 3,
+  "missing_count": 0,
+  "projects": []
+}
+```
+
+`ldgr registry prune --json` emits `schema_version`, `dry_run`,
+`pruned_count`, `project_count`, `projects`, and `paths`.
 
 `ldgr init` and `ldgr instructions install` write the authoritative instruction
 body to `~/.ldgr/operating-guide.md` and add a top-of-file absolute

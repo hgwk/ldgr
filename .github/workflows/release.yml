@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   quality:
@@ -16,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.26"
           cache: false
       - name: gofmt
         run: |
@@ -39,6 +38,7 @@ jobs:
         run: |
           node -c bin/install.js
           sh -n bin/ldgr
+          go run . registry list --json >/tmp/ldgr-registry.json
           npm pack --dry-run
 
   build:
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.26"
           cache: false
       - name: build
         env:

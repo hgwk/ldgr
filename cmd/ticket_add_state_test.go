@@ -97,6 +97,20 @@ func TestTicketAdd_StateInvalidEnumsShowAllowedValues(t *testing.T) {
 	}
 }
 
+func TestTicketEvent_StateFailureShowsExampleHint(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	var stderr bytes.Buffer
+
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"missing"}`), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected failure")
+	}
+	if !strings.Contains(stderr.String(), "ldgr ticket add --example") {
+		t.Fatalf("stderr missing example hint:\n%s", stderr.String())
+	}
+}
+
 func TestTicketAdd_ExampleIsValidStateTicket(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")

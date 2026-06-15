@@ -27,7 +27,7 @@ func init() {
 
 func RunRegistryCLI(args []string, store *registry.Store, registryPath string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ldgr registry <list|prune|repair>")
+		printRegistryUsage(stderr)
 		return 2
 	}
 	switch args[0] {
@@ -38,9 +38,19 @@ func RunRegistryCLI(args []string, store *registry.Store, registryPath string, s
 	case "repair":
 		return runRegistryRepair(store, registryPath, stdout, stderr)
 	default:
-		fmt.Fprintln(stderr, "usage: ldgr registry <list|prune|repair>")
+		printRegistryUsage(stderr)
 		return 2
 	}
+}
+
+func printRegistryUsage(w io.Writer) {
+	fmt.Fprintln(w, `usage: ldgr registry <subcommand> [args]
+
+Subcommands:
+  list [--json]          list registered projects, newest first
+  prune [--dry-run]      remove paths whose ledger/config.json is missing
+  prune --json           emit a schema_versioned prune summary
+  repair                 rebuild a corrupt registry after backing it up`)
 }
 
 func runRegistryList(args []string, store *registry.Store, stdout, stderr io.Writer) int {
@@ -56,7 +66,9 @@ func runRegistryList(args []string, store *registry.Store, stdout, stderr io.Wri
 	}
 	sortProjectsByLastSeen(r.Projects)
 	if *jsonOut {
-		if err := json.NewEncoder(stdout).Encode(registryListPayload(r.Projects)); err != nil {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(registryListPayload(r.Projects)); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -88,8 +100,18 @@ type registryPathStatus struct {
 	Status string `json:"status"`
 }
 
-func registryListPayload(projects []registry.Project) []registryProjectStatus {
+type registryListSummary struct {
+	SchemaVersion int                     `json:"schema_version"`
+	ProjectCount  int                     `json:"project_count"`
+	PathCount     int                     `json:"path_count"`
+	MissingCount  int                     `json:"missing_count"`
+	Projects      []registryProjectStatus `json:"projects"`
+}
+
+func registryListPayload(projects []registry.Project) registryListSummary {
 	out := make([]registryProjectStatus, 0, len(projects))
+	pathCount := 0
+	missingCount := 0
 	for _, p := range projects {
 		item := registryProjectStatus{
 			ProjectID: p.ProjectID,
@@ -99,15 +121,23 @@ func registryListPayload(projects []registry.Project) []registryProjectStatus {
 			Paths:     make([]registryPathStatus, 0, len(p.Paths)),
 		}
 		for _, path := range p.Paths {
+			pathCount++
 			status := "ok"
 			if !configExists(path) {
 				status = "missing"
+				missingCount++
 			}
 			item.Paths = append(item.Paths, registryPathStatus{Path: path, Status: status})
 		}
 		out = append(out, item)
 	}
-	return out
+	return registryListSummary{
+		SchemaVersion: 1,
+		ProjectCount:  len(out),
+		PathCount:     pathCount,
+		MissingCount:  missingCount,
+		Projects:      out,
+	}
 }
 
 func sortProjectsByLastSeen(projects []registry.Project) {
@@ -129,19 +159,28 @@ func runRegistryPrune(args []string, store *registry.Store, stdout, stderr io.Wr
 		return 1
 	}
 	var missing []string
+	missingByProject := map[string][]string{}
 	for _, p := range r.Projects {
 		for _, path := range p.Paths {
 			if configExists(path) {
 				continue
 			}
 			missing = append(missing, path)
+			missingByProject[p.ProjectID] = append(missingByProject[p.ProjectID], path)
 		}
 	}
 	if *jsonOut {
-		if err := json.NewEncoder(stdout).Encode(map[string]any{
-			"dry_run": *dryRun,
-			"paths":   missing,
-		}); err != nil {
+		payload := map[string]any{
+			"schema_version": 1,
+			"dry_run":        *dryRun,
+			"pruned_count":   len(missing),
+			"project_count":  len(missingByProject),
+			"projects":       missingByProject,
+			"paths":          missing,
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(payload); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}

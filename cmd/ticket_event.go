@@ -28,6 +28,9 @@ func runTicketEvent(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	row, err := normalizeTicketEvent(dir, input, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		if isStateTicketInput(input) || isStateTarget(dir) {
+			fmt.Fprintln(stderr, "hint: run `ldgr ticket add --example` for a complete state-model JSON payload")
+		}
 		return 1
 	}
 	if err := enforceGitCompletionEvidence(dir, row); err != nil {
