@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.12 - 2026-06-16
+
+### Fixed
+
+- Restore the viewer ticket drawer shell styles so Kanban, Tree, Dashboard,
+  Audit, Worklog, and Insights ticket clicks visibly open detail.
+
 ## v0.3.11 - 2026-06-16
 
 ### Changed

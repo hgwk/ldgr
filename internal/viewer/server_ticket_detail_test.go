@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -129,5 +130,23 @@ func TestServer_ServesIndex(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "<title>ldgr</title>") {
 		t.Fatalf("index body missing title:\n%s", rec.Body.String())
+	}
+}
+
+func TestServer_EmbedsDrawerShellStyles(t *testing.T) {
+	body, err := fs.ReadFile(Assets(), "style-drawer.css")
+	if err != nil {
+		t.Fatalf("read style-drawer.css: %v", err)
+	}
+	css := string(body)
+	for _, want := range []string{
+		"#drawer",
+		"position: fixed",
+		"#drawer.open",
+		"transform: translateX(0)",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("style-drawer.css missing %q:\n%s", want, css)
+		}
 	}
 }

@@ -1,4 +1,51 @@
 /* Drawer */
+#drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(760px, calc(100vw - 32px));
+  height: 100dvh;
+  background: var(--surface);
+  color: var(--fg);
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.16);
+  padding: var(--space-5);
+  overflow-y: auto;
+  z-index: 50;
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 140ms ease, visibility 140ms ease;
+}
+#drawer.open {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+#drawer .close {
+  position: sticky;
+  top: 0;
+  float: right;
+  width: 28px;
+  height: 28px;
+  margin: 0 0 var(--space-3) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 1;
+}
+#drawer .close:hover {
+  background: var(--surface-2);
+}
+#drawer .close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .drawer-head {
   display: flex; align-items: baseline; gap: var(--space-3);
   margin-bottom: var(--space-4);
@@ -91,4 +138,3 @@
   white-space: pre-wrap;
   margin: 0;
 }
-
