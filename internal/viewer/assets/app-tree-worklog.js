@@ -21,7 +21,7 @@ async function renderTree(root, background) {
   const canonical = all.some((it) => it.row.state || it.row.type || it.row.id);
   const kindOptions = uniqueSorted(all.map((it) => it.row.kind || it.row.type));
   const stateOptions = canonical
-    ? ["", "ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"]
+    ? ["", "ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"]
     : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
   clearInvalidSelection(state.treeFilter, "kind", ["", ...kindOptions]);
   clearInvalidSelection(state.treeFilter, "status", stateOptions);

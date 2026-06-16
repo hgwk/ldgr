@@ -148,7 +148,9 @@ ldgr suggest commit  --ticket BUG-101        # Conventional Commit + PR/verifica
 The lifecycle is **enforced**, not advisory:
 
 - Implementation moves through `ready → doing → review`.
-- `review` requires non-empty `evidence`.
+- `review` requires test evidence such as `test:unit`, `test:smoke`,
+  `test:browser`, `test:manual`, or a concrete test command.
+- `done` requires passing test evidence; commit evidence alone is not enough.
 - Closing a ticket requires a separate audit event: `event.role=auditor`,
   `state=done`, `event.result=pass`, non-empty `evidence`, and `reviewed_n`
   pointing at the review row.

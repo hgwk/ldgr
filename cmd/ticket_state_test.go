@@ -90,6 +90,27 @@ func TestTicketEventState_RejectsDoneWithOnlyNotRunTestEvidence(t *testing.T) {
 	}
 }
 
+func TestTicketEventState_RejectsDoneWithCommitButNoTestEvidence(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-COMMIT-ONLY","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-COMMIT-ONLY","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-COMMIT-ONLY","state":"review","evidence":["test:manual: local review"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	reviewN := int(rows[len(rows)-1]["n"].(float64))
+	done := fmt.Sprintf(`{"id":"STATE-COMMIT-ONLY","state":"done","evidence":["commit:abc123"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	var stderr bytes.Buffer
+
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(done), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected done with commit-only evidence rejection")
+	}
+	if !strings.Contains(stderr.String(), "passing test evidence") {
+		t.Fatalf("stderr should mention passing test evidence, got: %s", stderr.String())
+	}
+}
+
 func TestTicketEventState_RejectsDirectDone(t *testing.T) {
 	target := mustInitState(t)
 	t.Setenv("LEDGER_AGENT", "codex")

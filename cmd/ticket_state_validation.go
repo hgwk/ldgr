@@ -111,8 +111,8 @@ func validateStateTicketWrite(row map[string]any, prev ledger.Row) error {
 		if role != "auditor" || event["result"] != "pass" || !hasPositiveStateNumber(event["reviewed_n"]) || !hasNonEmptyStateList(row, "evidence") {
 			return errors.New("ticket: state=done requires event.role=auditor, event.result=pass, event.reviewed_n, and non-empty evidence")
 		}
-		if ledger.HasOnlyNotRunTestEvidence(stateEvidence(row)) {
-			return errors.New("ticket: state=done cannot rely only on test:not_run evidence")
+		if !ledger.HasTestEvidence(stateEvidence(row)) {
+			return errors.New("ticket: state=done requires passing test evidence; test:not_run and commit evidence alone are not enough")
 		}
 	case "rework":
 		notes, _ := event["notes"].(string)

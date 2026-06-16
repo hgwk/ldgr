@@ -15,7 +15,7 @@ async function renderKanban(root, background) {
     ? ["", "epic", "plan", "issue", "task", "audit", "ops"]
     : ["", "plan", "issue", "task", "audit", "ops"];
   const stateOptions = canonical
-    ? ["", "ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"]
+    ? ["", "ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"]
     : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
   clearInvalidSelection(state.kanbanFilter, "kind", kindOptions);
   clearInvalidSelection(state.kanbanFilter, "status", stateOptions);

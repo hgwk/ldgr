@@ -31,11 +31,11 @@ func ComputeState(latest ledger.Row, worklog []ledger.Row) Guidance {
 	case "doing":
 		g.Summary = "implementation active"
 		g.Actions = []string{
-			"Finish implementation and verification evidence.",
-			"Move to review only when evidence is ready; do not append worklog yet.",
+			"Finish implementation and test evidence.",
+			"Move to review only when test evidence is ready; do not append worklog yet.",
 		}
 		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
-		g.SuggestedJSON = []any{overlayState(latest, map[string]any{"state": "review", "evidence": []any{}, "event": map[string]any{"role": "implementer", "summary": "ready for review", "notes": ""}})}
+		g.SuggestedJSON = []any{overlayState(latest, map[string]any{"state": "review", "evidence": []any{"test:unit:<command-or-test-marker>"}, "event": map[string]any{"role": "implementer", "summary": "ready for review", "notes": ""}})}
 	case "blocked":
 		g.Summary = "blocked"
 		g.Actions = []string{"Resolve blocked_by before implementation continues."}
