@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/hgwk/ldgr/internal/ledger"
 	"github.com/hgwk/ldgr/internal/lifecycle"
@@ -16,6 +17,7 @@ func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	target := fs.String("target", "", "")
 	jsonSpec := fs.String("json", "", "")
 	example := fs.Bool("example", false, "print an example state-model ticket JSON")
+	userApproved := fs.String("user-approved", "", "record explicit user approval reason on the ticket")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -30,6 +32,7 @@ func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	recordUserApproval(input, *userApproved)
 
 	row, err := normalizeTicketAdd(dir, input, stderr)
 	if err != nil {
@@ -51,6 +54,48 @@ func runTicketAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	return encErr(enc.Encode(out), stderr)
+}
+
+func recordUserApproval(input map[string]any, reason string) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return
+	}
+	marker := "user_approved:" + reason
+	if event, ok := input["event"].(map[string]any); ok {
+		event["notes"] = appendMarker(stringValue(event["notes"]), marker)
+	}
+	if evidence, ok := input["evidence"].([]any); ok && !containsEvidenceMarker(evidence, marker) {
+		input["evidence"] = append(evidence, marker)
+	}
+	if !isStateTicketInput(input) {
+		input["notes"] = appendMarker(stringValue(input["notes"]), marker)
+	}
+}
+
+func appendMarker(notes, marker string) string {
+	notes = strings.TrimSpace(notes)
+	if notes == "" {
+		return marker
+	}
+	if strings.Contains(notes, marker) || strings.Contains(notes, "user_approved:") {
+		return notes
+	}
+	return notes + "\n" + marker
+}
+
+func containsEvidenceMarker(evidence []any, marker string) bool {
+	for _, entry := range evidence {
+		if entry == marker {
+			return true
+		}
+	}
+	return false
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func normalizeTicketAdd(dir string, input map[string]any, stderr io.Writer) (map[string]any, error) {

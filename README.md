@@ -225,7 +225,7 @@ For release tarballs (after a `v*` tag has been published):
 
 ```bash
 curl -sSL -o ldgr.tar.gz \
-  https://github.com/hgwk/ldgr/releases/download/v0.3.8/ldgr_0.3.8_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+  https://github.com/hgwk/ldgr/releases/download/v0.3.9/ldgr_0.3.9_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
 tar -xzf ldgr.tar.gz
 install -m 0755 ldgr_*/ldgr ~/.local/bin/ldgr
 ```

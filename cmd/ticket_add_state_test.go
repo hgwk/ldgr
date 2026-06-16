@@ -131,3 +131,45 @@ func TestTicketAdd_ExampleIsValidStateTicket(t *testing.T) {
 		t.Fatalf("unexpected rows: %+v", rows)
 	}
 }
+
+func TestTicketAdd_UserApprovedAnnotatesStateTicket(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	body := []byte(`{
+		"id":"approved-plan",
+		"parent":"ROOT",
+		"type":"task",
+		"state":"ready",
+		"area":"ops",
+		"priority":"P2",
+		"title":"Approved planning ticket",
+		"blocked_by":[],
+		"acceptance":["ticket records user approval"],
+		"evidence":[],
+		"event":{"role":"planner","summary":"opened","notes":"planned from user request"}
+	}`)
+	var stdout, stderr bytes.Buffer
+
+	code := RunTicketCLI(
+		[]string{"add", "--target", target, "--user-approved", "IA ticket creation", "--json", "@-"},
+		bytes.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("append failed: %s", stderr.String())
+	}
+	rows, err := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	if err != nil {
+		t.Fatalf("read rows: %v", err)
+	}
+	event, _ := rows[0]["event"].(map[string]any)
+	notes, _ := event["notes"].(string)
+	if !strings.Contains(notes, "user_approved:IA ticket creation") {
+		t.Fatalf("notes missing approval marker: %q", notes)
+	}
+	evidence, _ := rows[0]["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "user_approved:IA ticket creation" {
+		t.Fatalf("evidence missing approval marker: %+v", evidence)
+	}
+}

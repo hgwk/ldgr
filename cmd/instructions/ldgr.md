@@ -45,6 +45,7 @@ Do not edit ledger JSONL files directly. Use `ldgr`.
 ```bash
 ldgr next --ticket <id> --format json
 ldgr ticket add   --json @-
+ldgr ticket add   --user-approved "user requested ticket creation" --json @-
 ldgr ticket event --json @-
 ldgr worklog add  --json @-
 ldgr verify
