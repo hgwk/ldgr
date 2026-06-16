@@ -152,7 +152,7 @@ The lifecycle is **enforced**, not advisory:
   `test:browser`, `test:manual`, or a concrete test command.
 - `done` requires passing test evidence; commit evidence alone is not enough.
 - Closing a ticket requires a separate audit event: `event.role=auditor`,
-  `state=done`, `event.result=pass`, non-empty `evidence`, and `reviewed_n`
+  `state=done`, `event.result=pass`, passing test evidence, and `reviewed_n`
   pointing at the review row.
 - Done evidence should also include `commit:<sha>`, `pr:<url-or-number>`, or
   `no_commit:<reason>`; `ldgr verify` warns when completed work is not tied to
@@ -160,7 +160,7 @@ The lifecycle is **enforced**, not advisory:
 - Requested changes are also an audit event: `state=rework`,
   `event.result=changes_requested`, `event.notes`, and `reviewed_n`.
 - `ldgr worklog add` is gated — it requires the ticket's latest row to be
-  audit-pass done. Pre-audit calls are rejected.
+  audit-pass done with passing test evidence. Pre-audit calls are rejected.
 - `ldgr suggest commit` refuses to scaffold before audit pass; use
   `--allow-unaudited` only when you know what you're doing.
 
