@@ -23,6 +23,10 @@ func stringField(r ledger.Row, k string) string {
 }
 
 func ticketID(r ledger.Row) string {
+	return ticketIDFromRow(r)
+}
+
+func ticketIDFromRow(r ledger.Row) string {
 	if v := stringField(r, "ticket"); v != "" {
 		return v
 	}

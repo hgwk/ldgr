@@ -107,6 +107,46 @@ func TestServer_TicketDetailExposesEnrichedFields(t *testing.T) {
 	}
 }
 
+func TestServer_TicketDetailMatchesMixedLegacyAndStateRows(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Default("myapp", "mixed-id", "")
+	cfg.SchemaVersion = 1
+	if err := os.MkdirAll(filepath.Join(dir, "ledger"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := config.Save(filepath.Join(dir, "ledger", "config.json"), cfg); err != nil {
+		t.Fatalf("config save: %v", err)
+	}
+	jsonio.WriteJSON(filepath.Join(dir, "ledger", "goal.json"), map[string]any{
+		"schema_version":   1,
+		"summary":          "hello",
+		"success_criteria": []any{},
+	})
+	rows := strings.Join([]string{
+		`{"n":1,"ts":"2026-05-14T10:00:00Z","ticket":"LEG-1","parent_ticket":"ROOT","status":"open","task":"legacy","blocked_by":[]}`,
+		`{"n":2,"ts":"2026-05-14T10:01:00Z","id":"STATE-1","parent":"ROOT","state":"ready","title":"state","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "ledger", "tickets.jsonl"), []byte(rows), 0o644); err != nil {
+		t.Fatalf("write tickets: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ledger", "worklog.jsonl"), []byte{}, 0o644); err != nil {
+		t.Fatalf("write worklog: %v", err)
+	}
+	srv, err := NewSingleProjectServer(dir)
+	if err != nil {
+		t.Fatalf("server: %v", err)
+	}
+	for _, id := range []string{"LEG-1", "STATE-1"} {
+		var resp map[string]any
+		if c := getJSON(t, srv.Handler(), "/api/projects/mixed-id/tickets/"+id, &resp); c != 200 {
+			t.Fatalf("%s status %d", id, c)
+		}
+		if resp["ticket"] != id {
+			t.Fatalf("ticket field for %s wrong: %+v", id, resp)
+		}
+	}
+}
+
 func TestServer_TicketDetailUnknown404(t *testing.T) {
 	srv, pid := newTestServer(t)
 	req := httptest.NewRequest("GET", "/api/projects/"+pid+"/tickets/does-not-exist", nil)

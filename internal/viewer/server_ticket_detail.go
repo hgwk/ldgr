@@ -10,16 +10,9 @@ import (
 func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, proj Project, ticketID string) {
 	// Collect all non-companion rows for this ticket, oldest first.
 	history := make([]ledger.Row, 0)
-	stateMode := usesStateTicketRows(proj.Tickets)
 	for _, row := range proj.Tickets {
-		if stateMode {
-			if id, _ := row["id"].(string); id != ticketID {
-				continue
-			}
-		} else {
-			if id, _ := row["ticket"].(string); id != ticketID {
-				continue
-			}
+		if ticketIDFromRow(row) != ticketID {
+			continue
 		}
 		if _, isCompanion := row["invalidates_n"]; isCompanion {
 			continue
@@ -141,19 +134,4 @@ func recentProjectActivityTS(ticketRows, worklogRows []ledger.Row) string {
 		}
 	}
 	return best
-}
-
-func usesStateTicketRows(rows []ledger.Row) bool {
-	for _, row := range rows {
-		if _, ok := row["id"]; ok {
-			return true
-		}
-		if _, ok := row["state"]; ok {
-			return true
-		}
-		if _, ok := row["event"]; ok {
-			return true
-		}
-	}
-	return false
 }

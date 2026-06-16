@@ -120,8 +120,8 @@ function renderDrawerHistory(history) {
     tb.appendChild(el("tr", trAttrs,
       el("td", { class: "mono", text: r.n != null ? String(r.n) : "" }),
       el("td", { text: fmtTS(r.ts) }),
-      el("td", null, r.status ? el("span", { class: "pill " + r.status, text: r.status }) : document.createTextNode("")),
-      el("td", { text: r.role || "" }),
+      el("td", null, ticketState(r) ? el("span", { class: "pill " + ticketState(r), text: ticketState(r) }) : document.createTextNode("")),
+      el("td", { text: r.role || (r.event && r.event.role) || "" }),
       el("td", { text: r.notes || r.decision || r.audit_notes || "" }),
     ));
   }

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.13 - 2026-06-16
+
+### Fixed
+
+- Make viewer ticket detail lookup handle mixed legacy `ticket` rows and
+  state-model `id` rows in the same project.
+- Render state-model history status and event role in the ticket drawer.
+
 ## v0.3.12 - 2026-06-16
 
 ### Fixed
