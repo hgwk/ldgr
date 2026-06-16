@@ -1,0 +1,11 @@
+{
+  "docs": {
+    "roots": ["README.md", "CHANGELOG.md", "docs/integration.md"]
+  },
+  "docsDuplication": {
+    "roots": ["README.md", "CHANGELOG.md", "docs/integration.md"]
+  },
+  "docsProposal": {
+    "roots": ["README.md", "CHANGELOG.md", "docs/integration.md"]
+  }
+}
