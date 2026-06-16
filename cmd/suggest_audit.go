@@ -32,7 +32,7 @@ func suggestAudit(latest ledger.Row, worklog []ledger.Row, writingLanguage strin
 		"role":         "audit",
 		"status":       "done",
 		"audit_result": "pass",
-		"evidence":     []any{},
+		"evidence":     []any{"test:unit:<command-or-test-marker>"},
 		"reviewed_n":   reviewedN,
 	}
 	changes := map[string]any{
@@ -69,7 +69,7 @@ func suggestAuditState(latest ledger.Row, worklog []ledger.Row, writingLanguage 
 	pass := map[string]any{
 		"id":       latest["id"],
 		"state":    "done",
-		"evidence": []any{},
+		"evidence": []any{"test:unit:<command-or-test-marker>"},
 		"event": map[string]any{
 			"role":       "auditor",
 			"result":     "pass",

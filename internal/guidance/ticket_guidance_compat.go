@@ -28,7 +28,7 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 			"When implementation is finished, append a ticket event with status=audit_ready and include evidence.",
 		}
 		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
-		g.SuggestedJSON = []any{overlay(latest, map[string]any{"status": "audit_ready", "evidence": []any{}})}
+		g.SuggestedJSON = []any{overlay(latest, map[string]any{"status": "audit_ready", "evidence": []any{"test:unit:<command-or-test-marker>"}})}
 	case "blocked":
 		g.Summary = "waiting on blockers"
 		g.Actions = []string{"Do not implement until at least one blocker clears."}
@@ -59,7 +59,7 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 		g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
 		g.SuggestedJSON = []any{
 			overlay(latest, map[string]any{
-				"role": "audit", "status": "done", "audit_result": "pass", "evidence": []any{},
+				"role": "audit", "status": "done", "audit_result": "pass", "evidence": []any{"test:unit:<command-or-test-marker>"},
 			}),
 			overlay(latest, map[string]any{
 				"role": "audit", "status": "changes_requested", "audit_result": "changes_requested",
@@ -96,7 +96,7 @@ func Compute(latest ledger.Row, worklog []ledger.Row) Guidance {
 			g.Actions = []string{"Append a role=audit row with audit_result=pass and evidence before treating this as shipped."}
 			g.SuggestedCommands = []string{"ldgr ticket event --json @-"}
 			g.SuggestedJSON = []any{overlay(latest, map[string]any{
-				"role": "audit", "status": "done", "audit_result": "pass", "evidence": []any{},
+				"role": "audit", "status": "done", "audit_result": "pass", "evidence": []any{"test:unit:<command-or-test-marker>"},
 			})}
 		}
 	case "cancelled":

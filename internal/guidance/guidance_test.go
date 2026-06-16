@@ -45,6 +45,10 @@ func TestCompute_InProgressSuggestsAuditReady(t *testing.T) {
 	if skel["status"] != "audit_ready" {
 		t.Fatalf("expected audit_ready skeleton, got %v", skel["status"])
 	}
+	evidence, _ := skel["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "test:unit:<command-or-test-marker>" {
+		t.Fatalf("expected test evidence placeholder, got %+v", skel)
+	}
 }
 
 func TestCompute_BlockedListsUnresolved(t *testing.T) {
@@ -75,6 +79,11 @@ func TestCompute_AuditReadyForbidsWorklog(t *testing.T) {
 	if len(g.SuggestedJSON) < 2 {
 		t.Fatalf("expected pass + changes_requested skeletons, got %d", len(g.SuggestedJSON))
 	}
+	pass := g.SuggestedJSON[0].(map[string]any)
+	evidence, _ := pass["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "test:unit:<command-or-test-marker>" {
+		t.Fatalf("expected pass test evidence placeholder, got %+v", pass)
+	}
 }
 
 func TestCompute_ChangesRequestedResumes(t *testing.T) {
@@ -102,6 +111,11 @@ func TestCompute_DoneWithoutAuditWarns(t *testing.T) {
 	g := Compute(ticket(map[string]any{"status": "done"}), nil)
 	if len(g.Warnings) == 0 {
 		t.Fatalf("expected warning about weak closure, got none")
+	}
+	skel := g.SuggestedJSON[0].(map[string]any)
+	evidence, _ := skel["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "test:unit:<command-or-test-marker>" {
+		t.Fatalf("expected weak-done repair skeleton test evidence placeholder, got %+v", skel)
 	}
 }
 

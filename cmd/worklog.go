@@ -206,7 +206,7 @@ func isStateWorklogAllowed(latest ledger.Row) bool {
 	if result, _ := event["result"].(string); result != "pass" {
 		return false
 	}
-	return hasPositiveStateNumber(event["reviewed_n"]) && hasNonEmptyStateList(latest, "evidence")
+	return hasPositiveStateNumber(event["reviewed_n"]) && ledger.HasTestEvidence(stateEvidence(latest))
 }
 
 func findLatestStateTicket(rows []ledger.Row, id string) (ledger.Row, bool) {

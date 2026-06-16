@@ -29,6 +29,10 @@ func TestSuggestAudit_OnAuditReadyEmitsSkeletons(t *testing.T) {
 	if arr[0]["audit_result"] != "pass" || arr[1]["audit_result"] != "changes_requested" {
 		t.Fatalf("skeleton order wrong: %+v", arr)
 	}
+	evidence, _ := arr[0]["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "test:unit:<command-or-test-marker>" {
+		t.Fatalf("pass skeleton should include test evidence placeholder: %+v", arr[0])
+	}
 }
 
 func TestSuggestAudit_OnNonAuditReadyPrintsGuidance(t *testing.T) {
@@ -64,6 +68,10 @@ func TestSuggestAuditState_OnReviewEmitsSkeletons(t *testing.T) {
 	}
 	if arr[0]["id"] != "AU-STATE" || arr[0]["state"] != "done" || arr[1]["state"] != "rework" {
 		t.Fatalf("unexpected state-model audit skeletons: %+v", arr)
+	}
+	evidence, _ := arr[0]["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0] != "test:unit:<command-or-test-marker>" {
+		t.Fatalf("state pass skeleton should include test evidence placeholder: %+v", arr[0])
 	}
 	event, _ := arr[0]["event"].(map[string]any)
 	if rn, _ := event["reviewed_n"].(float64); int(rn) != reviewN {

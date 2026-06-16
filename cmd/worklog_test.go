@@ -271,3 +271,25 @@ func TestWorklogAddState_RejectsBeforeDone(t *testing.T) {
 		t.Fatalf("stderr should mention audit-pass done, got: %s", stderr.String())
 	}
 }
+
+func TestWorklogAddState_RejectsDoneWithoutPassingTestEvidence(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-WL-NOTEST","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-WL-NOTEST","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-WL-NOTEST","state":"review","evidence":["test:manual: local review"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	row := ledger.Row{
+		"id":       "STATE-WL-NOTEST",
+		"state":    "done",
+		"evidence": []any{"commit:abc123"},
+		"event": map[string]any{
+			"role":       "auditor",
+			"result":     "pass",
+			"reviewed_n": float64(3),
+		},
+	}
+	if isStateWorklogAllowed(row) {
+		t.Fatalf("state worklog should not be allowed without passing test evidence")
+	}
+}
