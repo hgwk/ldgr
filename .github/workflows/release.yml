@@ -34,6 +34,22 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: release version guard
+        run: |
+          set -euo pipefail
+          cli_version=$(go run . version | awk '{print $2}')
+          npm_version=$(node -p "require('./package.json').version")
+          if [ "$cli_version" != "$npm_version" ]; then
+            echo "::error::CLI version $cli_version does not match package.json $npm_version"
+            exit 1
+          fi
+          if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [ "$tag_version" != "$npm_version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match package version $npm_version"
+              exit 1
+            fi
+          fi
       - name: npm package smoke
         run: |
           node -c bin/install.js
