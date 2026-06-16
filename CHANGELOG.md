@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.11 - 2026-06-16
+
+### Changed
+
+- Require test evidence before state-model tickets can enter `review`.
+- Require passing test evidence before audit-pass `done`; `test:not_run` and
+  commit evidence alone are no longer enough.
+- Make audit/worklog/commit/PR suggestions carry the stronger test-evidence
+  lifecycle gate.
+- Add user-approval evidence handling for planner-created tickets and orphan
+  drop decisions.
+- Harden registry JSON contracts and cleanup/install automation.
+
 ## v0.3.5 - 2026-06-12
 
 ### Changed
