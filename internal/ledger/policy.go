@@ -33,16 +33,16 @@ var boardColumns = []BoardColumn{
 	{ID: "ready", Title: "Ready"},
 	{ID: "doing", Title: "Doing"},
 	{ID: "review", Title: "Review"},
-	{ID: "done", Title: "Done"},
+	{ID: "rework", Title: "Rework"},
 	{ID: "backlog", Title: "Backlog"},
 	{ID: "blocked", Title: "Blocked"},
-	{ID: "rework", Title: "Rework"},
+	{ID: "done", Title: "Done"},
 	{ID: "dropped", Title: "Dropped"},
 }
 
 var boardGrid = [][]string{
-	{"ready", "doing", "review", "done"},
-	{"backlog", "blocked", "rework", "dropped"},
+	{"ready", "doing", "review", "rework"},
+	{"backlog", "blocked", "done", "dropped"},
 }
 
 // NextCompatStatuses returns legal next values for older status-shaped rows.

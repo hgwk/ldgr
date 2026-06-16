@@ -18,6 +18,10 @@ Do not edit ledger JSONL files directly. Use `ldgr`.
 - Use the state model: `backlog`, `ready`, `doing`, `review`, `done`,
   `rework`, `blocked`, `dropped`.
 - Move implementation to `review`; auditors move it to `done` or `rework`.
+- `review` evidence must include a test marker such as `test:unit`,
+  `test:smoke`, `test:browser`, `test:manual`, or a concrete test command.
+- `test:not_run:<reason>` may document a review limitation, but `done` cannot
+  rely only on not-run evidence.
 - Worklog follows audit-pass `done`; do not add worklog for unaudited work.
 - Use the smallest sufficient verification gate. Do not report completion if
   verification did not run.

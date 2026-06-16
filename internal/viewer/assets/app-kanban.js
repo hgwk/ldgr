@@ -163,6 +163,7 @@ function kanbanCard(t) {
     b.appendChild(document.createTextNode(" ev"));
     badges.appendChild(b);
   }
+  appendEvidenceBadges(badges, t);
   const eventResult = t.event && t.event.result;
   if (t.audit_result === "pass" || eventResult === "pass") {
     const b = el("span", { class: "badge badge-ok" });
@@ -179,3 +180,37 @@ function kanbanCard(t) {
 function ticketID(t) { return (t && (t.ticket || t.id)) || ""; }
 function ticketState(t) { return (t && (t.state || t.status)) || ""; }
 function ticketTitle(t) { return (t && (t.task || t.title)) || ""; }
+
+function appendEvidenceBadges(root, t) {
+  const evidence = Array.isArray(t.evidence) ? t.evidence.filter((e) => typeof e === "string") : [];
+  const kinds = uniqueSorted(evidence.map(testEvidenceKind).filter(Boolean));
+  for (const kind of kinds.slice(0, 3)) {
+    root.appendChild(el("span", {
+      class: "badge " + (kind === "not_run" ? "badge-warn" : "badge-test"),
+      text: kind,
+      title: "test evidence",
+    }));
+  }
+  if ((ticketState(t) === "review" || ticketState(t) === "done") && !kinds.some((k) => k !== "not_run")) {
+    root.appendChild(el("span", { class: "badge badge-warn", text: "missing test" }));
+  }
+  if (evidence.some((e) => /^commit:/i.test(e.trim()))) {
+    root.appendChild(el("span", { class: "badge badge-mono badge-test", text: "commit" }));
+  } else if (evidence.some((e) => /^no_commit:/i.test(e.trim()))) {
+    root.appendChild(el("span", { class: "badge badge-mono", text: "no_commit" }));
+  }
+}
+
+function testEvidenceKind(evidence) {
+  const v = evidence.trim().toLowerCase();
+  if (!v) return "";
+  if (v.startsWith("test:")) return v.slice(5).split(":")[0].trim();
+  if (v.includes("playwright") || v.includes("browser")) return "browser";
+  if (v.includes("smoke")) return "smoke";
+  if (v.includes("e2e")) return "e2e";
+  if (v.includes("integration")) return "integration";
+  if (v.includes("typecheck") || v.includes("tsc")) return "typecheck";
+  if (v.includes("lint") || v.includes("clippy")) return "lint";
+  if (v.includes("go test") || v.includes("cargo test") || v.includes("npm test") || v.includes("pnpm test") || v.includes("yarn test") || v.includes("bun test")) return "unit";
+  return "";
+}

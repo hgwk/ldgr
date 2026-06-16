@@ -80,7 +80,7 @@ func TestServer_KanbanShape(t *testing.T) {
 	if len(cols) != 8 {
 		t.Fatalf("want 8 columns, got %d", len(cols))
 	}
-	wantIDs := []string{"ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"}
+	wantIDs := []string{"ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"}
 	for i, raw := range cols {
 		col, _ := raw.(map[string]any)
 		if col["id"] != wantIDs[i] {

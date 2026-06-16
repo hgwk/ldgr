@@ -154,6 +154,34 @@ func TestVerify_StateWarnsOnMissingSuccessCriteriaAtReview(t *testing.T) {
 	}
 }
 
+func TestVerify_StateWarnsOnMissingTestEvidenceAtReview(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONState(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["verify"],"evidence":["commit:abc123"],"event":{"actor":"codex","role":"implementer","summary":"ready","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if !hasWarnCode(report, "REVIEW_TEST_EVIDENCE_MISSING") {
+		t.Fatalf("expected REVIEW_TEST_EVIDENCE_MISSING warn, got %+v", report.Warns)
+	}
+}
+
+func TestVerify_StateAcceptsTypedTestEvidenceAtReview(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"ledger/config.json": validConfigJSONState(),
+		"ledger/goal.json":   validGoalJSON(),
+		"ledger/tickets.jsonl": `{"n":1,"ts":"2026-05-14T10:00:00Z","id":"T-1","parent":"ROOT","type":"task","state":"review","area":"frontend","priority":"P1","title":"build ui","owner":"codex","blocked_by":[],"acceptance":["verify"],"evidence":["test:browser: drawer smoke"],"event":{"actor":"codex","role":"implementer","summary":"ready","notes":""}}
+`,
+		"ledger/worklog.jsonl": "",
+	})
+	report, _ := Run(dir)
+	if hasWarnCode(report, "REVIEW_TEST_EVIDENCE_MISSING") {
+		t.Fatalf("did not expect REVIEW_TEST_EVIDENCE_MISSING warn, got %+v", report.Warns)
+	}
+}
+
 func TestVerify_StateWarnsOnWeakDecisionContext(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"ledger/config.json": validConfigJSONState(),

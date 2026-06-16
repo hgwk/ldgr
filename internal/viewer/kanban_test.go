@@ -137,7 +137,7 @@ func TestStateKanban_MapsStatesToFourByTwoColumns(t *testing.T) {
 	if len(k.Columns) != 8 {
 		t.Fatalf("want 8 columns, got %d", len(k.Columns))
 	}
-	want := []string{"ready", "doing", "review", "done", "backlog", "blocked", "rework", "dropped"}
+	want := []string{"ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"}
 	for i, id := range want {
 		if k.Columns[i].ID != id {
 			t.Fatalf("column %d id=%s want %s", i, k.Columns[i].ID, id)
@@ -146,7 +146,7 @@ func TestStateKanban_MapsStatesToFourByTwoColumns(t *testing.T) {
 			t.Fatalf("column %s should have one ticket, got %+v", id, k.Columns[i].Tickets)
 		}
 	}
-	if len(k.Grid) != 2 || len(k.Grid[0]) != 4 || k.Grid[0][0] != "ready" || k.Grid[1][3] != "dropped" {
+	if len(k.Grid) != 2 || len(k.Grid[0]) != 4 || k.Grid[0][3] != "rework" || k.Grid[1][2] != "done" {
 		t.Fatalf("unexpected grid: %+v", k.Grid)
 	}
 }

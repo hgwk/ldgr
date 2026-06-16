@@ -108,6 +108,31 @@ func checkReviewEvidenceQuality(rep *Report, tickets []ledger.Row, stateMode boo
 	}
 }
 
+func checkReviewTestEvidence(rep *Report, tickets []ledger.Row, stateMode bool) {
+	for _, r := range tickets {
+		status := rowStatus(r, stateMode)
+		if status != "review" && status != "done" && status != "audit_ready" {
+			continue
+		}
+		evidence, _ := r["evidence"].([]any)
+		if ledger.HasTestEvidence(evidence) {
+			continue
+		}
+		line, _ := numberAsInt(r["n"])
+		id := rowID(r, stateMode)
+		code := "REVIEW_TEST_EVIDENCE_MISSING"
+		if status == "done" {
+			code = "DONE_TEST_EVIDENCE_MISSING"
+		}
+		rep.Warns = append(rep.Warns, Issue{
+			File:    "ledger/tickets.jsonl",
+			Line:    line,
+			Code:    code,
+			Message: fmt.Sprintf("[%s] %s %s row should include test evidence", code, id, status),
+		})
+	}
+}
+
 func checkSuccessCriteriaCoverage(rep *Report, tickets []ledger.Row, stateMode bool) {
 	for _, r := range tickets {
 		status := rowStatus(r, stateMode)

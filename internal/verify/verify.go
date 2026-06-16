@@ -79,6 +79,7 @@ func runWith(targetDir string, strict bool) (Report, error) {
 	checkWorklogCommands(&rep, worklogRows)
 	checkClaimPathConflicts(&rep, ticketRows, stateMode)
 	checkReviewEvidenceQuality(&rep, ticketRows, stateMode)
+	checkReviewTestEvidence(&rep, ticketRows, stateMode)
 	checkSuccessCriteriaCoverage(&rep, ticketRows, stateMode)
 	checkDecisionContext(&rep, ticketRows, stateMode)
 	checkHandoffShape(&rep, ticketRows, stateMode)

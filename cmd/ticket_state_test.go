@@ -52,6 +52,44 @@ func TestTicketEventState_AuditPassDone(t *testing.T) {
 	}
 }
 
+func TestTicketEventState_RejectsReviewWithoutTestEvidence(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-NO-TEST","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-NO-TEST","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	var stderr bytes.Buffer
+
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-NO-TEST","state":"review","evidence":["ok"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected review without test evidence rejection")
+	}
+	if !strings.Contains(stderr.String(), "state=review requires test evidence") {
+		t.Fatalf("stderr should explain test evidence requirement, got: %s", stderr.String())
+	}
+}
+
+func TestTicketEventState_RejectsDoneWithOnlyNotRunTestEvidence(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	add := `{"id":"STATE-NOT-RUN","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P1","title":"build","blocked_by":[],"acceptance":["verify"],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(add), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-NOT-RUN","state":"doing","event":{"role":"implementer","summary":"started","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(`{"id":"STATE-NOT-RUN","state":"review","evidence":["test:not_run: unavailable"],"event":{"role":"implementer","summary":"ready","notes":""}}`), &bytes.Buffer{}, &bytes.Buffer{})
+	rows, _ := ledger.ReadRows(filepath.Join(target, "ledger", "tickets.jsonl"))
+	reviewN := int(rows[len(rows)-1]["n"].(float64))
+	done := fmt.Sprintf(`{"id":"STATE-NOT-RUN","state":"done","evidence":["test:not_run: unavailable"],"event":{"role":"auditor","result":"pass","reviewed_n":%d,"summary":"passed","notes":""}}`, reviewN)
+	var stderr bytes.Buffer
+
+	code := RunTicketCLI([]string{"event", "--target", target, "--json", "@-"}, strings.NewReader(done), &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected done with only not_run evidence rejection")
+	}
+	if !strings.Contains(stderr.String(), "test:not_run") {
+		t.Fatalf("stderr should mention test:not_run, got: %s", stderr.String())
+	}
+}
+
 func TestTicketEventState_RejectsDirectDone(t *testing.T) {
 	target := mustInitState(t)
 	t.Setenv("LEDGER_AGENT", "codex")

@@ -90,6 +90,7 @@
 }
 .badge-warn { color: var(--status-blocked); border-color: var(--status-blocked); }
 .badge-ok { color: var(--status-done); border-color: var(--status-done); }
+.badge-test { color: var(--accent); border-color: var(--accent); }
 .badge-mono { font-family: var(--font-mono); }
 .kanban-card-idgroup {
   display: inline-flex; align-items: baseline; gap: var(--space-2);
@@ -183,4 +184,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
