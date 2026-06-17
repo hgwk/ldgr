@@ -12,3 +12,6 @@
 # AI assistant memory (local-only)
 .serena/
 .claude/
+
+# AI planning artifacts
+/docs/superpowers/
