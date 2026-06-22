@@ -30,13 +30,13 @@
   margin-bottom: var(--space-3);
 }
 .kanban-col-title {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 .kanban-col-count {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--fg);
   background: var(--surface-2);
@@ -61,7 +61,7 @@
   border-left: 3px solid var(--status-audit_ready);
 }
 .kanban-age-chip {
-  font-size: 10px;
+  font-size: 9px;
   padding: 0 4px;
   border-radius: 4px;
   background: var(--surface);
@@ -77,9 +77,9 @@
   gap: var(--space-2);
   margin-bottom: 2px;
 }
-.kanban-card-id { font-size: 12px; }
+.kanban-card-id { font-size: 11px; }
 .kanban-card-task {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--fg);
   overflow: hidden;
   display: -webkit-box;
@@ -98,6 +98,9 @@
   border: 1px solid var(--border);
   color: var(--muted);
 }
+.kanban-card .badge {
+  font-size: 9px;
+}
 .badge-warn { color: var(--status-blocked); border-color: var(--status-blocked); }
 .badge-ok { color: var(--status-done); border-color: var(--status-done); }
 .badge-test { color: var(--accent); border-color: var(--accent); }
@@ -107,6 +110,7 @@
   min-width: 0; flex: 1 1 auto;
 }
 .kanban-owner {
+  font-size: 9px;
   display: inline-flex; align-items: center; gap: 2px;
   flex: 0 0 auto; max-width: 100px;
   font-family: var(--font-mono);
@@ -205,7 +209,7 @@
   overflow-y: auto;
 }
 .coord-title {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -214,7 +218,7 @@
 .coord-section { margin-bottom: var(--space-4); }
 .coord-section:last-child { margin-bottom: 0; }
 .coord-section-title {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--fg);
   margin-bottom: var(--space-2);
 }
@@ -247,12 +251,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.coord-main { font-size: 12px; }
+.coord-main { font-size: 11px; }
 .coord-sub {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
 }
 .coord-empty {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
