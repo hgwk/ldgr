@@ -57,6 +57,7 @@ func v1TicketKnownFields() map[string]struct{} {
 		"status": {}, "task": {}, "scope": {}, "paths": {}, "blocked_by": {}, "branch": {},
 		"decision": {}, "notes": {}, "category": {}, "kind": {}, "priority": {},
 		"acceptance": {}, "evidence": {}, "audit_result": {}, "audit_notes": {}, "reviewed_n": {},
+		"team": {},
 	}
 }
 

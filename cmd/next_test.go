@@ -245,3 +245,36 @@ func TestNextState_ProjectQueueUsesStateVocabulary(t *testing.T) {
 		t.Fatalf("state-model queue item should not include status: %+v", first)
 	}
 }
+
+func TestNextState_ProjectQueueFiltersByTeam(t *testing.T) {
+	target := mustInitState(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	platform := `{"id":"TEAM-PLATFORM","parent":"ROOT","type":"task","state":"ready","area":"backend","priority":"P0","title":"platform work","team":"platform","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	growth := `{"id":"TEAM-GROWTH","parent":"ROOT","type":"task","state":"ready","area":"frontend","priority":"P0","title":"growth work","team":"growth","blocked_by":[],"acceptance":[],"evidence":[],"event":{"role":"planner","summary":"opened","notes":""}}`
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(platform), &bytes.Buffer{}, &bytes.Buffer{})
+	RunTicketCLI([]string{"add", "--target", target, "--json", "@-"}, strings.NewReader(growth), &bytes.Buffer{}, &bytes.Buffer{})
+
+	var out bytes.Buffer
+	if code := RunNextCLI([]string{"--target", target, "--team", "platform", "--format", "json"}, &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("next state-model project team json failed")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if got["team"] != "platform" {
+		t.Fatalf("team not echoed: %+v", got)
+	}
+	items, _ := got["highlights"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one team highlight: %+v", got)
+	}
+	first, _ := items[0].(map[string]any)
+	if first["id"] != "TEAM-PLATFORM" {
+		t.Fatalf("wrong team item: %+v", first)
+	}
+	counts, _ := got["counts"].(map[string]any)
+	if counts["active"] != float64(1) {
+		t.Fatalf("counts should be team-scoped: %+v", counts)
+	}
+}

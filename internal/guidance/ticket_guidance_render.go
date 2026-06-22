@@ -67,7 +67,7 @@ func overlay(base ledger.Row, fields map[string]any) map[string]any {
 
 func overlayState(base ledger.Row, fields map[string]any) map[string]any {
 	out := map[string]any{}
-	for _, k := range []string{"id", "parent", "type", "state", "area", "priority", "title", "owner", "blocked_by", "acceptance", "evidence"} {
+	for _, k := range []string{"id", "parent", "type", "state", "area", "priority", "title", "owner", "team", "blocked_by", "acceptance", "evidence"} {
 		if v, ok := base[k]; ok {
 			out[k] = v
 		}

@@ -75,7 +75,23 @@ func suggestPlanCmd(rest []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("suggest plan")
 	target := fs.String("target", "", "")
 	ticket := fs.String("ticket", "", "")
+	parent := fs.String("parent", "", "")
+	area := fs.String("area", "", "")
+	owner := fs.String("owner", "", "")
+	priority := fs.String("priority", "", "")
+	team := fs.String("team", "", "")
 	if err := fs.Parse(rest); err != nil {
+		return 2
+	}
+	opts := suggestPlanOptions{
+		Parent:   *parent,
+		Area:     *area,
+		Owner:    *owner,
+		Priority: *priority,
+		Team:     *team,
+	}
+	if err := validateSuggestPlanOptions(opts); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	latest, _, _, dir, code := loadTicketContext(*target, *ticket, true, stderr)
@@ -83,7 +99,7 @@ func suggestPlanCmd(rest []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if isStateTarget(dir) {
-		return suggestPlanState(latest, *ticket, loadWritingLanguage(dir), stdout)
+		return suggestPlanState(latest, *ticket, loadWritingLanguage(dir), opts, stdout, stderr)
 	}
 	return suggestPlan(latest, *ticket, loadWritingLanguage(dir), stdout)
 }

@@ -23,7 +23,9 @@ async function renderTree(root, background) {
   const stateOptions = canonical
     ? ["", "ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"]
     : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
+  clearInvalidSelection(state.treeFilter, "parent", ["", ...treeParents]);
   clearInvalidSelection(state.treeFilter, "kind", ["", ...kindOptions]);
+  clearInvalidSelection(state.treeFilter, "priority", ["", "P0", "P1", "P2", "P3"]);
   clearInvalidSelection(state.treeFilter, "status", stateOptions);
   const treeBar = el("div", { class: "kanban-bar" });
   treeBar.appendChild(selectControl(["", ...treeParents], state.treeFilter.parent, "All parents", (v) => { state.treeFilter.parent = v; syncURL(); loadPage(); }));

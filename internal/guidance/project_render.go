@@ -67,7 +67,11 @@ func RenderProjectText(g ProjectGuidance) string {
 	if roleLabel == "" {
 		roleLabel = "all"
 	}
-	fmt.Fprintf(&b, "Project queue (role=%s)\n", roleLabel)
+	if g.Team != "" {
+		fmt.Fprintf(&b, "Project queue (role=%s team=%s)\n", roleLabel, g.Team)
+	} else {
+		fmt.Fprintf(&b, "Project queue (role=%s)\n", roleLabel)
+	}
 	fmt.Fprintf(&b, "  active=%d  blocked=%d  audit_ready=%d  changes_requested=%d  stale_premature=%d\n\n",
 		g.Counts.Active, g.Counts.Blocked, g.Counts.AuditReady, g.Counts.ChangesRequested, g.Counts.StalePremature)
 

@@ -30,6 +30,7 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 	ticket := fs.String("ticket", "", "")
 	format := fs.String("format", "text", "")
 	role := fs.String("role", "", "implementer|auditor|planner|maintainer (project-wide mode)")
+	team := fs.String("team", "", "team name (project-wide mode)")
 	gitFlag := fs.Bool("git", false, "compare git working tree against ticket paths")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -54,9 +55,9 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 
 	if *ticket == "" {
 		// Project-wide mode.
-		pg := guidance.ComputeProject(ticketRows, worklog, *role)
+		pg := guidance.ComputeProjectTeam(ticketRows, worklog, *role, *team)
 		if isStateTarget(dir) {
-			pg = guidance.ComputeStateProject(ticketRows, worklog, *role)
+			pg = guidance.ComputeStateProjectTeam(ticketRows, worklog, *role, *team)
 		}
 		pg.WritingLanguage = writingLanguage
 		if *gitFlag && gitutil.IsWorkTree(dir) {

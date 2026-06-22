@@ -49,6 +49,7 @@ function renderDrawerSummary(latest, invalidatedVia, history) {
     ["claim_until", latest.claim_until ? fmtTS(latest.claim_until) : ""],
     ["handoff_to",  latest.handoff_to],
     ["agent",       latest.agent || latest.owner],
+    ["team",        latest.team],
     ["role",        latest.role || event.role],
     ["event.result", event.result],
   ];

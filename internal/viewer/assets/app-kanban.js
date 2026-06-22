@@ -9,7 +9,14 @@ async function renderKanban(root, background) {
   const allTickets = [];
   for (const col of (k.columns || [])) for (const t of (col.tickets || [])) allTickets.push(t);
   const parents = uniqueSorted(allTickets.map((t) => t.parent_ticket || t.parent));
-  const agents = uniqueSorted(allTickets.map((t) => t.claimed_by || t.owner || t.agent));
+  const owners = uniqueSorted(allTickets.map((t) => t.owner || t.agent));
+  const claims = uniqueSorted(allTickets.map((t) => t.claimed_by));
+  const teams = uniqueSorted(allTickets.map((t) => t.team));
+  const teamOptions = [
+    { value: "", text: "" },
+    ...teams.map((v) => ({ value: v, text: v })),
+    { value: "__none", text: "No team" },
+  ];
   const canonical = Array.isArray(k.grid) && k.grid.length > 0;
   const kindOptions = canonical
     ? ["", "epic", "plan", "issue", "task", "audit", "ops"]
@@ -17,18 +24,35 @@ async function renderKanban(root, background) {
   const stateOptions = canonical
     ? ["", "ready", "doing", "review", "rework", "backlog", "blocked", "done", "dropped"]
     : ["", "open", "in_progress", "blocked", "audit_ready", "changes_requested", "done", "cancelled"];
+  const priorityOptions = ["", "P0", "P1", "P2", "P3"];
+  const blockedOptions = ["", "yes"];
+  const evidenceOptions = ["", "present", "missing"];
+  const sortOptions = ["ts", "oldest", "priority", "parent", "blocked", "missing_evidence"];
+  clearInvalidSelection(state.kanbanFilter, "priority", priorityOptions);
   clearInvalidSelection(state.kanbanFilter, "kind", kindOptions);
   clearInvalidSelection(state.kanbanFilter, "status", stateOptions);
+  clearInvalidSelection(state.kanbanFilter, "parent", ["", ...parents]);
+  clearInvalidSelection(state.kanbanFilter, "owner", ["", ...owners]);
+  clearInvalidSelection(state.kanbanFilter, "claim", ["", ...claims]);
+  clearInvalidSelection(state.kanbanFilter, "team", teamOptions.map((o) => o.value));
+  clearInvalidSelection(state.kanbanFilter, "blocked", blockedOptions);
+  clearInvalidSelection(state.kanbanFilter, "evidence", evidenceOptions);
+  if (!sortOptions.includes(state.kanbanSort)) {
+    state.kanbanSort = "ts";
+    syncURL();
+  }
 
   // Filter bar
   const bar = el("div", { class: "kanban-bar" });
-  bar.appendChild(selectControl(["", "P0", "P1", "P2", "P3"].map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.kanbanFilter.priority, "All priorities", (v) => { state.kanbanFilter.priority = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(priorityOptions.map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.kanbanFilter.priority, "All priorities", (v) => { state.kanbanFilter.priority = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(kindOptions.map(v => ({ value: v, text: v ? (canonical ? "Type " : "Kind ") + v : "" })), state.kanbanFilter.kind, canonical ? "All types" : "All kinds", (v) => { state.kanbanFilter.kind = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(stateOptions.map(v => ({ value: v, text: v ? (canonical ? "State " : "Status ") + v : "" })), state.kanbanFilter.status, canonical ? "All states" : "All statuses", (v) => { state.kanbanFilter.status = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(["", ...parents], state.kanbanFilter.parent, "All parents", (v) => { state.kanbanFilter.parent = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", ...agents], state.kanbanFilter.agent, "All agents", (v) => { state.kanbanFilter.agent = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl([{value:"",text:""}, {value:"yes",text:"Blocked only"}], state.kanbanFilter.blocked, "Any blocker", (v) => { state.kanbanFilter.blocked = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl([{value:"",text:""}, {value:"present",text:"Evidence present"}, {value:"missing",text:"Evidence missing"}], state.kanbanFilter.evidence, "Any evidence", (v) => { state.kanbanFilter.evidence = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...owners], state.kanbanFilter.owner, "All owners", (v) => { state.kanbanFilter.owner = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(["", ...claims], state.kanbanFilter.claim, "All claims", (v) => { state.kanbanFilter.claim = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl(teamOptions, state.kanbanFilter.team, "All teams", (v) => { state.kanbanFilter.team = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{ value: "", text: "" }, { value: "yes", text: "Blocked only" }], state.kanbanFilter.blocked, "Any blocker", (v) => { state.kanbanFilter.blocked = v; syncURL(); loadPage(); }));
+  bar.appendChild(selectControl([{ value: "", text: "" }, { value: "present", text: "Evidence present" }, { value: "missing", text: "Evidence missing" }], state.kanbanFilter.evidence, "Any evidence", (v) => { state.kanbanFilter.evidence = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl([
     { value: "ts", text: "Sort by updated" },
     { value: "oldest", text: "Sort by oldest" },
@@ -60,7 +84,10 @@ async function renderKanban(root, background) {
 	      if (state.kanbanFilter.kind && (t.kind || t.type || "") !== state.kanbanFilter.kind) return false;
 	      if (state.kanbanFilter.status && ticketState(t) !== state.kanbanFilter.status) return false;
 	      if (state.kanbanFilter.parent && (t.parent_ticket || t.parent || "") !== state.kanbanFilter.parent) return false;
-	      if (state.kanbanFilter.agent && (t.claimed_by || t.owner || t.agent || "") !== state.kanbanFilter.agent) return false;
+	      if (state.kanbanFilter.owner && (t.owner || t.agent || "") !== state.kanbanFilter.owner) return false;
+	      if (state.kanbanFilter.claim && (t.claimed_by || "") !== state.kanbanFilter.claim) return false;
+	      if (state.kanbanFilter.team === "__none" && (t.team || "") !== "") return false;
+	      if (state.kanbanFilter.team && state.kanbanFilter.team !== "__none" && (t.team || "") !== state.kanbanFilter.team) return false;
 	      if (state.kanbanFilter.blocked === "yes" && !(t.blocked_by || []).some(Boolean)) return false;
 	      if (state.kanbanFilter.evidence === "present" && !(t.evidence || []).some(Boolean)) return false;
 	      if (state.kanbanFilter.evidence === "missing" && (t.evidence || []).some(Boolean)) return false;
@@ -150,6 +177,7 @@ function kanbanCard(t) {
   const area = t.category || t.area || "";
   if (kind && kind !== "task") badges.appendChild(el("span", { class: "badge", text: kind }));
   if (area) badges.appendChild(el("span", { class: "badge", text: area }));
+  if (t.team) badges.appendChild(el("span", { class: "badge", text: t.team }));
   const blocked = (t.blocked_by || []).filter((s) => s);
   if (blocked.length > 0) {
     const b = el("span", { class: "badge badge-warn" });

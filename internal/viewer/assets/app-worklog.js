@@ -6,6 +6,11 @@ async function renderWorklog(root, background) {
   root.appendChild(el("div", { class: "page-title", text: "Worklog" }));
   const allRows = w.rows || [];
   const agents = uniqueSorted(allRows.map((r) => r.agent));
+  clearInvalidSelection(state.worklogFilter, "agent", ["", ...agents]);
+  if (!["newest", "oldest"].includes(state.worklogSort)) {
+    state.worklogSort = "newest";
+    syncURL();
+  }
   const bar = el("div", { class: "kanban-bar" });
   bar.appendChild(textControl(state.worklogFilter.q, "Search ticket/task/result", (v) => { state.worklogFilter.q = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(["", ...agents], state.worklogFilter.agent, "All agents", (v) => { state.worklogFilter.agent = v; syncURL(); loadPage(); }));

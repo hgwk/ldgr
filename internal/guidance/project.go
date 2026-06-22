@@ -8,6 +8,7 @@ import (
 
 type ProjectGuidance struct {
 	Role            string             `json:"role"`
+	Team            string             `json:"team,omitempty"`
 	WritingLanguage string             `json:"writing_language,omitempty"`
 	Highlights      []ProjectQueueItem `json:"highlights"` // top 8
 	Counts          ProjectCounts      `json:"counts"`
@@ -90,8 +91,15 @@ func LatestStateTickets(rows []ledger.Row) []ledger.Row {
 // ComputeProject returns project-wide guidance derived from latest ticket rows,
 // filtered by role (implementer|auditor|planner|maintainer). Empty role = "all".
 func ComputeProject(ticketRows, worklogRows []ledger.Row, role string) ProjectGuidance {
+	return ComputeProjectTeam(ticketRows, worklogRows, role, "")
+}
+
+// ComputeProjectTeam is ComputeProject scoped to tickets with a matching
+// optional `team` field.
+func ComputeProjectTeam(ticketRows, worklogRows []ledger.Row, role, team string) ProjectGuidance {
 	latest := LatestTickets(ticketRows)
-	pg := ProjectGuidance{Role: role}
+	latest = filterRowsByTeam(latest, team)
+	pg := ProjectGuidance{Role: role, Team: team}
 
 	// Counts.
 	for _, r := range latest {
@@ -141,8 +149,15 @@ func ComputeProject(ticketRows, worklogRows []ledger.Row, role string) ProjectGu
 // ComputeStateProject returns project-wide guidance for state-model ledgers. The
 // name is historical and should be collapsed in a later mechanical rename.
 func ComputeStateProject(ticketRows, worklogRows []ledger.Row, role string) ProjectGuidance {
+	return ComputeStateProjectTeam(ticketRows, worklogRows, role, "")
+}
+
+// ComputeStateProjectTeam is ComputeStateProject scoped to tickets with a
+// matching optional `team` field.
+func ComputeStateProjectTeam(ticketRows, worklogRows []ledger.Row, role, team string) ProjectGuidance {
 	latest := LatestStateTickets(ticketRows)
-	pg := ProjectGuidance{Role: role}
+	latest = filterRowsByTeam(latest, team)
+	pg := ProjectGuidance{Role: role, Team: team}
 
 	for _, r := range latest {
 		s, _ := r["state"].(string)
@@ -186,4 +201,17 @@ func ComputeStateProject(ticketRows, worklogRows []ledger.Row, role string) Proj
 	pg.Highlights = items
 	_ = worklogRows
 	return pg
+}
+
+func filterRowsByTeam(rows []ledger.Row, team string) []ledger.Row {
+	if team == "" {
+		return rows
+	}
+	out := make([]ledger.Row, 0, len(rows))
+	for _, r := range rows {
+		if stringField(r, "team") == team {
+			out = append(out, r)
+		}
+	}
+	return out
 }

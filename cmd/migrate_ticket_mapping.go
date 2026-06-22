@@ -103,6 +103,9 @@ func mapLegacyTicketToState(row ledger.Row) (ledger.Row, migrateCounts) {
 		"evidence":   evidence,
 		"event":      event,
 	}
+	if team := migrateStringField(row, "team"); team != "" {
+		out["team"] = team
+	}
 	if extra := unknownFields(row, v1TicketKnownFields()); len(extra) > 0 {
 		event["extra"] = extra
 		counts.unmappedField = len(extra)

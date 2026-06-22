@@ -53,9 +53,10 @@ Ready    Doing    Review    Done
 Backlog  Blocked  Rework    Dropped
 ```
 
-Ticket rows use `id`, `state`, `type`, `area`, `title`, `owner`, and an
-`event` object. Worklog rows keep their narrow meaning: one completed
-delivery after an audit-pass `done` ticket. They do not carry lifecycle state.
+Ticket rows use `id`, `state`, `type`, `area`, `title`, `owner`, optional
+`team`, and an `event` object. Worklog rows keep their narrow meaning: one
+completed delivery after an audit-pass `done` ticket. They do not carry
+lifecycle state.
 
 To preview the rewrite:
 
@@ -140,10 +141,17 @@ Ask explicitly:
 ```bash
 ldgr next --ticket BUG-101
 ldgr next --ticket BUG-101 --format json     # for LLM consumption
+ldgr next --team platform                    # project queue for one team
 
+ldgr suggest plan --ticket PLAN-1 --area backend --owner codex --team platform
 ldgr suggest worklog --ticket BUG-101        # JSON skeleton, only after audit pass
 ldgr suggest commit  --ticket BUG-101        # Conventional Commit + PR/verification scaffold
 ```
+
+`suggest plan` creates a `type=plan`, `state=backlog` ticket skeleton. Use
+`--area` for the responsibility lane, `--owner` for the assigned actor, and
+optional `--team` for group ownership. `area` and `priority` are validated
+against the ledger taxonomy before the JSON is printed.
 
 The lifecycle is **enforced**, not advisory:
 

@@ -9,7 +9,7 @@ let state = {
   projectId: null,
   page: "tickets",
   ticketView: "kanban",
-  kanbanFilter: { priority: "", kind: "", status: "", parent: "", agent: "", blocked: "", evidence: "" },
+  kanbanFilter: { priority: "", kind: "", status: "", parent: "", owner: "", claim: "", team: "", blocked: "", evidence: "" },
   kanbanSort: "ts",
   treeFilter: { parent: "", kind: "", priority: "", status: "" },
   worklogFilter: { q: "", agent: "" },
@@ -217,21 +217,23 @@ function syncURL() {
   if (state.projectId) params.set("project", state.projectId);
   if (state.page && state.page !== "tickets") params.set("page", state.page);
   if (state.page === "tickets" && state.ticketView !== "kanban") params.set("view", state.ticketView);
-	  if (state.kanbanFilter.priority) params.set("priority", state.kanbanFilter.priority);
-	  if (state.kanbanFilter.kind) params.set("kind", state.kanbanFilter.kind);
-	  if (state.kanbanFilter.status) params.set("status", state.kanbanFilter.status);
-	  if (state.kanbanFilter.parent) params.set("parent", state.kanbanFilter.parent);
-	  if (state.kanbanFilter.agent) params.set("agent", state.kanbanFilter.agent);
-	  if (state.kanbanFilter.blocked) params.set("blocked", state.kanbanFilter.blocked);
-	  if (state.kanbanFilter.evidence) params.set("evidence", state.kanbanFilter.evidence);
-	  if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
-	  if (state.treeFilter.parent) params.set("tree_parent", state.treeFilter.parent);
-	  if (state.treeFilter.kind) params.set("tree_kind", state.treeFilter.kind);
-	  if (state.treeFilter.priority) params.set("tree_priority", state.treeFilter.priority);
-	  if (state.treeFilter.status) params.set("tree_status", state.treeFilter.status);
-	  if (state.worklogFilter.q) params.set("worklog_q", state.worklogFilter.q);
-	  if (state.worklogFilter.agent) params.set("worklog_agent", state.worklogFilter.agent);
-	  if (state.worklogSort !== "newest") params.set("worklog_sort", state.worklogSort);
+  if (state.kanbanFilter.priority) params.set("priority", state.kanbanFilter.priority);
+  if (state.kanbanFilter.kind) params.set("kind", state.kanbanFilter.kind);
+  if (state.kanbanFilter.status) params.set("status", state.kanbanFilter.status);
+  if (state.kanbanFilter.parent) params.set("parent", state.kanbanFilter.parent);
+  if (state.kanbanFilter.owner) params.set("owner", state.kanbanFilter.owner);
+  if (state.kanbanFilter.claim) params.set("claim", state.kanbanFilter.claim);
+  if (state.kanbanFilter.team) params.set("team", state.kanbanFilter.team);
+  if (state.kanbanFilter.blocked) params.set("blocked", state.kanbanFilter.blocked);
+  if (state.kanbanFilter.evidence) params.set("evidence", state.kanbanFilter.evidence);
+  if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
+  if (state.treeFilter.parent) params.set("tree_parent", state.treeFilter.parent);
+  if (state.treeFilter.kind) params.set("tree_kind", state.treeFilter.kind);
+  if (state.treeFilter.priority) params.set("tree_priority", state.treeFilter.priority);
+  if (state.treeFilter.status) params.set("tree_status", state.treeFilter.status);
+  if (state.worklogFilter.q) params.set("worklog_q", state.worklogFilter.q);
+  if (state.worklogFilter.agent) params.set("worklog_agent", state.worklogFilter.agent);
+  if (state.worklogSort !== "newest") params.set("worklog_sort", state.worklogSort);
   const qs = params.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
 }
