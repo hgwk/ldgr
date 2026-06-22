@@ -105,16 +105,20 @@ body {
   height: 100dvh;
   overflow: hidden;
 }
+body.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
 
 /* Inline SVG icons */
 .icon { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; flex: 0 0 auto; }
-.theme-toggle .icon { width: 16px; height: 16px; vertical-align: 0; }
+.theme-toggle .icon, .sidebar-toggle .icon { width: 16px; height: 16px; vertical-align: 0; }
 #drawer .close .icon { width: 16px; height: 16px; vertical-align: 0; }
 .badge .icon, .kanban-owner-mark .icon { width: 11px; height: 11px; vertical-align: -1px; }
 .badge .icon + * { margin-left: 2px; }
 
 /* Theme toggle button in topbar */
-.theme-toggle {
+.theme-toggle,
+.sidebar-toggle {
   margin-left: auto;
   background: transparent;
   border: 1px solid var(--border);
@@ -130,8 +134,9 @@ body {
   align-items: center;
   justify-content: center;
 }
-.theme-toggle:hover { background: var(--surface); }
-.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sidebar-toggle { margin-left: 0; }
+.theme-toggle:hover, .sidebar-toggle:hover { background: var(--surface); }
+.theme-toggle:focus-visible, .sidebar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Sidebar */
 #sidebar {
@@ -141,6 +146,14 @@ body {
   padding: var(--space-4);
   overflow-y: auto;
   height: 100dvh;
+}
+body.sidebar-collapsed #sidebar {
+  border-right: 0;
+  padding: 0;
+  overflow: hidden;
+}
+body.sidebar-collapsed #sidebar > * {
+  display: none;
 }
 #sidebar h1 {
   font-size: 15px;
@@ -188,7 +201,7 @@ body {
 #page.page-kanban .kanban-layout { flex: 1 1 auto; min-height: 0; }
 #page.page-kanban .kanban-board { flex: 1 1 auto; min-height: 0; max-height: none; }
 #topbar {
-  display: flex; align-items: baseline; gap: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-3);
   margin-bottom: var(--space-4); padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }

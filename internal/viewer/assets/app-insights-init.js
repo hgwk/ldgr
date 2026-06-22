@@ -152,6 +152,7 @@ function startPolling() {
     savedTheme = "dark";
   }
   applyTheme(savedTheme === "dark" ? "dark" : "light");
+  initSidebarToggle();
   const params = new URLSearchParams(location.search);
   if (params.get("project")) state.projectId = params.get("project");
   if (params.get("page")) state.page = normalizePage(params.get("page"));
