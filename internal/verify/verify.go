@@ -60,6 +60,7 @@ func runWith(targetDir string, strict bool) (Report, error) {
 	if err != nil {
 		rep.Fails = append(rep.Fails, Issue{File: "ledger/worklog.jsonl", Code: "PARSING_ERROR", Message: err.Error()})
 	}
+	coordinationRows := readCoordinationRows(targetDir, &rep)
 
 	stateMode := usesStateRows(ticketRows, worklogRows)
 	if stateMode {
@@ -77,6 +78,7 @@ func runWith(targetDir string, strict bool) (Report, error) {
 		checkPrematureWorklog(&rep, ticketRows, worklogRows)
 	}
 	checkWorklogCommands(&rep, worklogRows)
+	checkCoordinationRows(&rep, coordinationRows)
 	checkClaimPathConflicts(&rep, ticketRows, stateMode)
 	checkReviewEvidenceQuality(&rep, ticketRows, stateMode)
 	checkReviewTestEvidence(&rep, ticketRows, stateMode)

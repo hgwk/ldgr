@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 
 	"github.com/hgwk/ldgr/internal/config"
+	"github.com/hgwk/ldgr/internal/coordination"
 	"github.com/hgwk/ldgr/internal/gitutil"
 	"github.com/hgwk/ldgr/internal/guidance"
 	"github.com/hgwk/ldgr/internal/ledger"
@@ -52,6 +54,12 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	worklog, _ := ledger.ReadRows(filepath.Join(dir, "ledger", "worklog.jsonl"))
+	coordRows, err := coordination.ReadRows(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	coord := coordination.BuildSummary(coordRows, time.Now())
 
 	if *ticket == "" {
 		// Project-wide mode.
@@ -82,11 +90,18 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 				var m map[string]any
 				json.Unmarshal(data, &m)
 				m["git"] = findings
+				m["coordination"] = coord
+				data, _ = json.MarshalIndent(m, "", "  ")
+			} else {
+				var m map[string]any
+				json.Unmarshal(data, &m)
+				m["coordination"] = coord
 				data, _ = json.MarshalIndent(m, "", "  ")
 			}
 			fmt.Fprintln(stdout, string(data))
 		} else {
 			fmt.Fprint(stdout, guidance.RenderProjectText(pg))
+			fmt.Fprint(stdout, renderCoordinationText(coord))
 		}
 		return 0
 	}
@@ -137,11 +152,18 @@ func RunNextCLI(args []string, stdout, stderr io.Writer) int {
 			var m map[string]any
 			json.Unmarshal(data, &m)
 			m["git"] = findings
+			m["coordination"] = coord
+			data, _ = json.MarshalIndent(m, "", "  ")
+		} else {
+			var m map[string]any
+			json.Unmarshal(data, &m)
+			m["coordination"] = coord
 			data, _ = json.MarshalIndent(m, "", "  ")
 		}
 		fmt.Fprintln(stdout, string(data))
 	default:
 		fmt.Fprint(stdout, guidance.RenderText(g))
+		fmt.Fprint(stdout, renderCoordinationText(coord))
 	}
 	return 0
 }

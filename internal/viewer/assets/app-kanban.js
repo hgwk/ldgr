@@ -1,7 +1,11 @@
 /* Kanban */
 async function renderKanban(root, background) {
-  const k = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/kanban");
-  if (shouldSkipRender("kanban", k, background)) return;
+  const base = "/api/projects/" + encodeURIComponent(state.projectId);
+  const [k, coordination] = await Promise.all([
+    getJSON(base + "/kanban"),
+    getJSON(base + "/coordination"),
+  ]);
+  if (shouldSkipRender("kanban", { k, coordination }, background)) return;
   root.innerHTML = "";
   root.appendChild(el("div", { class: "page-title", text: "Tickets" }));
   appendTicketViewSwitch(root);
@@ -65,7 +69,10 @@ async function renderKanban(root, background) {
 
   const cols = k.columns || [];
   if (cols.every((c) => (c.tickets || []).length === 0)) {
-    root.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
+    const layout = el("div", { class: "kanban-layout" });
+    layout.appendChild(el("div", { class: "state-empty", text: "No tickets yet." }));
+    layout.appendChild(coordinationRail(coordination));
+    root.appendChild(layout);
     return;
   }
 
@@ -73,6 +80,8 @@ async function renderKanban(root, background) {
   const orderedCols = canonical
     ? k.grid.flat().map((id) => byColumn.get(id)).filter(Boolean)
     : cols;
+  const conflictTickets = coordinationConflictTickets(coordination);
+  const layout = el("div", { class: "kanban-layout" });
   const board = el("div", { class: "kanban-board" });
   for (const col of orderedCols) {
     const colEl = el("div", { class: "kanban-col" });
@@ -111,12 +120,14 @@ async function renderKanban(root, background) {
 
     const list = el("div", { class: "kanban-col-list" });
     for (const t of tickets) {
-      list.appendChild(kanbanCard(t));
+      list.appendChild(kanbanCard(t, conflictTickets));
     }
     colEl.appendChild(list);
     board.appendChild(colEl);
   }
-  root.appendChild(board);
+  layout.appendChild(board);
+  layout.appendChild(coordinationRail(coordination));
+  root.appendChild(layout);
 }
 
 // kanbanAgeTone returns CSS classes + an optional age chip label based on how
@@ -136,7 +147,7 @@ function kanbanAgeTone(t) {
   return { cls: "", chip: "" };
 }
 
-function kanbanCard(t) {
+function kanbanCard(t, conflictTickets) {
   const tone = kanbanAgeTone(t);
   const id = ticketID(t);
   const stateName = ticketState(t);
@@ -178,6 +189,9 @@ function kanbanCard(t) {
   if (kind && kind !== "task") badges.appendChild(el("span", { class: "badge", text: kind }));
   if (area) badges.appendChild(el("span", { class: "badge", text: area }));
   if (t.team) badges.appendChild(el("span", { class: "badge", text: t.team }));
+  if (conflictTickets && conflictTickets.has(id)) {
+    badges.appendChild(el("span", { class: "badge badge-warn", text: "conflict" }));
+  }
   const blocked = (t.blocked_by || []).filter((s) => s);
   if (blocked.length > 0) {
     const b = el("span", { class: "badge badge-warn" });
@@ -203,6 +217,16 @@ function kanbanCard(t) {
   if (badges.childNodes.length > 0) card.appendChild(badges);
 
   return card;
+}
+
+function coordinationConflictTickets(coordination) {
+  const out = new Set();
+  for (const conflict of (coordination && coordination.conflicts || [])) {
+    for (const claim of [conflict.first, conflict.second]) {
+      if (claim && claim.ticket) out.add(claim.ticket);
+    }
+  }
+  return out;
 }
 
 function ticketID(t) { return (t && (t.ticket || t.id)) || ""; }

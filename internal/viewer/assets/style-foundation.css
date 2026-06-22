@@ -185,6 +185,7 @@ body {
 }
 /* When kanban is the page, let the board fill #page without page-level scroll */
 #page.page-kanban { overflow: hidden; }
+#page.page-kanban .kanban-layout { flex: 1 1 auto; min-height: 0; }
 #page.page-kanban .kanban-board { flex: 1 1 auto; min-height: 0; max-height: none; }
 #topbar {
   display: flex; align-items: baseline; gap: var(--space-3);
@@ -201,4 +202,3 @@ body {
   letter-spacing: 0.08em;
   margin: 0 0 var(--space-3) 0;
 }
-

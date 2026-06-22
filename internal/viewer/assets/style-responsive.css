@@ -1,5 +1,6 @@
 /* Responsive */
 @media (max-width: 960px) {
+  .kanban-layout { grid-template-columns: 1fr; }
   .kanban-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-split { grid-template-columns: 1fr; }
 }

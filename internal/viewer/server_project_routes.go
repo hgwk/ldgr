@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/hgwk/ldgr/internal/coordination"
 )
 
 func (s *Server) handleProjectSubroute(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +72,8 @@ func (s *Server) handleProjectSubroute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, BuildDashboard(proj.Tickets, proj.Worklog, s.Now()))
 	case "kanban":
 		writeJSON(w, BuildKanban(proj.Tickets))
+	case "coordination":
+		writeJSON(w, coordination.BuildSummary(proj.Coord, s.Now()))
 	case "audit-queue":
 		latest := LatestTickets(proj.Tickets)
 		writeJSON(w, map[string]any{"items": BuildAuditQueue(latest, s.Now())})

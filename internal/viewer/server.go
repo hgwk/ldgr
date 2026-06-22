@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hgwk/ldgr/internal/config"
+	"github.com/hgwk/ldgr/internal/coordination"
 	"github.com/hgwk/ldgr/internal/ids"
 	"github.com/hgwk/ldgr/internal/jsonio"
 	"github.com/hgwk/ldgr/internal/ledger"
@@ -20,6 +21,7 @@ type Project struct {
 	Goal    ledger.Goal
 	Tickets []ledger.Row
 	Worklog []ledger.Row
+	Coord   []ledger.Row
 	Display string
 	Paths   []string
 	Missing bool
@@ -155,5 +157,9 @@ func loadProjectFromDir(dir string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	return Project{Config: cfg, Goal: goal, Tickets: tickets, Worklog: worklog}, nil
+	coord, err := ledger.ReadRows(coordination.Path(dir))
+	if err != nil {
+		return Project{}, err
+	}
+	return Project{Config: cfg, Goal: goal, Tickets: tickets, Worklog: worklog, Coord: coord}, nil
 }

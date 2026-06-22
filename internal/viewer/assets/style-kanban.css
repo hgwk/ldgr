@@ -6,6 +6,16 @@
   align-items: stretch;
   max-height: calc(100dvh - 160px);
 }
+.kanban-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-3);
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.kanban-layout .kanban-board {
+  min-height: 0;
+}
 .kanban-col {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -183,4 +193,66 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Coordination rail */
+.coord-rail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+.coord-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+}
+.coord-section { margin-bottom: var(--space-4); }
+.coord-section:last-child { margin-bottom: 0; }
+.coord-section-title {
+  font-size: 11px;
+  color: var(--fg);
+  margin-bottom: var(--space-2);
+}
+.coord-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.coord-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: inherit;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+.coord-row:hover { border-color: var(--accent); }
+.coord-row-alert,
+.coord-row-stale {
+  border-left: 3px solid var(--status-blocked);
+}
+.coord-main,
+.coord-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.coord-main { font-size: 12px; }
+.coord-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.coord-empty {
+  color: var(--muted);
+  font-size: 12px;
 }

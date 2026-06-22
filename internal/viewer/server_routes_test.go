@@ -93,6 +93,34 @@ func TestServer_KanbanShape(t *testing.T) {
 	}
 }
 
+func TestServer_CoordinationEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Default("myapp", "id-coord", "")
+	if err := os.MkdirAll(filepath.Join(dir, "ledger"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := config.Save(filepath.Join(dir, "ledger", "config.json"), cfg); err != nil {
+		t.Fatalf("config save: %v", err)
+	}
+	jsonio.WriteJSON(filepath.Join(dir, "ledger", "goal.json"), map[string]any{"schema_version": 1, "summary": "hello"})
+	os.WriteFile(filepath.Join(dir, "ledger", "tickets.jsonl"), []byte{}, 0o644)
+	os.WriteFile(filepath.Join(dir, "ledger", "worklog.jsonl"), []byte{}, 0o644)
+	os.WriteFile(filepath.Join(dir, "ledger", "coordination.jsonl"),
+		[]byte(`{"n":1,"type":"claim","id":"c1","ticket":"T-1","resources":["src/api"],"claim_until":"2999-01-01T00:00:00Z"}`+"\n"), 0o644)
+	srv, err := NewSingleProjectServer(dir)
+	if err != nil {
+		t.Fatalf("server: %v", err)
+	}
+	var resp map[string]any
+	if c := getJSON(t, srv.Handler(), "/api/projects/id-coord/coordination", &resp); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	claims, _ := resp["claims"].([]any)
+	if len(claims) != 1 {
+		t.Fatalf("want 1 claim, got %+v", resp)
+	}
+}
+
 func TestServer_StateKanbanShape(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Default("myapp", "id-state", "")

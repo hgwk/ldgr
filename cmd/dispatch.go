@@ -39,6 +39,8 @@ func printUsage(w io.Writer) {
 Subcommands:
   init          initialize ledger files
   ticket        append or update ticket rows
+  claim         claim or release shared coordination resources
+  note          append shared coordination notes
   worklog       append completed-work rows
   audit         append audit pass or changes-requested rows
   verify        run ledger guardrails

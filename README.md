@@ -148,6 +148,22 @@ ldgr suggest worklog --ticket BUG-101        # JSON skeleton, only after audit p
 ldgr suggest commit  --ticket BUG-101        # Conventional Commit + PR/verification scaffold
 ```
 
+When multiple lanes run in parallel, add coordination before moving work into
+`doing`:
+
+```bash
+ldgr claim add --ticket BUG-101 --lane api --resource backend/auth --ttl 2h
+ldgr note add --kind decision --scope openapi --ticket BUG-101 --summary "keep v2 response shape"
+ldgr claim release --ticket BUG-101 --summary "ready for review"
+```
+
+`ldgr next` includes active claims, conflicts, and recent shared notes after the
+normal project/ticket guidance. The viewer shows the same information as a
+coordination rail beside the Kanban board. Claims are for resources currently
+being touched; notes are for lane-wide decisions, risks, handoffs, and
+broadcasts. `ldgr verify` warns on stale coordination claims and overlapping
+exclusive claims.
+
 `suggest plan` creates a `type=plan`, `state=backlog` ticket skeleton. Use
 `--area` for the responsibility lane, `--owner` for the assigned actor, and
 optional `--team` for group ownership. `area` and `priority` are validated
