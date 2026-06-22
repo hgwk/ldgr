@@ -197,8 +197,8 @@ body.sidebar-collapsed #sidebar > * {
   flex-direction: column;
 }
 /* When kanban is the page, let the board fill #page without page-level scroll */
-#page.page-kanban { overflow: hidden; }
-#page.page-kanban .kanban-layout { flex: 1 1 auto; min-height: 0; }
+#page.page-kanban { overflow: auto; }
+#page.page-kanban .kanban-layout { flex: 1 0 auto; min-height: min(560px, calc(100dvh - 190px)); }
 #page.page-kanban .kanban-board { flex: 1 1 auto; min-height: 0; max-height: none; }
 #topbar {
   display: flex; align-items: center; gap: var(--space-3);

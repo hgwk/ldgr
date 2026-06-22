@@ -5,6 +5,7 @@
   gap: var(--space-3);
   align-items: stretch;
   max-height: calc(100dvh - 160px);
+  min-height: 420px;
 }
 .kanban-layout {
   display: grid;
@@ -23,7 +24,7 @@
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 320px;
 }
 .kanban-col-head {
   display: flex; align-items: center; justify-content: space-between;
