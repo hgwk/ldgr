@@ -10,8 +10,8 @@
   #sidebar { height: auto; max-height: 32dvh; border-right: none; border-bottom: 1px solid var(--border); }
   body.sidebar-collapsed #sidebar { max-height: 0; border-bottom: 0; }
   #main { height: auto; min-height: 0; overflow-y: auto; }
-  .kanban-board { max-height: calc(68dvh - 120px); min-height: 320px; }
-  .kanban-col { min-height: 240px; }
+  .kanban-board { max-height: calc(68dvh - 120px); }
+  .kanban-col { min-height: 0; }
   .kanban-col-list { overflow-y: auto; }
   /* Drawer fits tighter on phones; cap scroll panes a touch smaller so the
      close button + drawer head remain reachable without long scrolls. */
