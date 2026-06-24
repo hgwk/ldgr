@@ -21,18 +21,21 @@ func warnMissingGitCompletionEvidence(row map[string]any, stderr io.Writer) {
 }
 
 func enforceGitCompletionEvidence(dir string, row map[string]any) error {
-	if rowStatus(row) != "done" || hasGitCompletionEvidence(row) {
+	if rowStatus(row) != "done" {
 		return nil
 	}
 	cfg, err := config.Load(filepath.Join(dir, "ledger", "config.json"))
 	if err != nil || strings.ToLower(strings.TrimSpace(cfg.GitEvidence)) != "fail" {
 		return nil
 	}
+	if hasCommittedGitCompletionEvidence(row) {
+		return nil
+	}
 	id := rowID(row)
 	if id == "" {
 		id = "ticket"
 	}
-	return fmt.Errorf("%s is done without Git evidence; add evidence commit:<sha>, pr:<url-or-number>, or no_commit:<reason>, or set ledger/config.json git_evidence to warn/off", id)
+	return fmt.Errorf("%s is done without committed Git evidence; add evidence commit:<sha> or pr:<url-or-number>, or set ledger/config.json git_evidence to warn/off", id)
 }
 
 func hasGitCompletionEvidence(row map[string]any) bool {
@@ -47,6 +50,24 @@ func hasGitCompletionEvidence(row map[string]any) bool {
 func isGitCompletionEvidence(evidence string) bool {
 	v := strings.TrimSpace(strings.ToLower(evidence))
 	if strings.HasPrefix(v, "commit:") || strings.HasPrefix(v, "pr:") || strings.HasPrefix(v, "no_commit:") {
+		i := strings.Index(v, ":")
+		return i >= 0 && strings.TrimSpace(v[i+1:]) != ""
+	}
+	return strings.HasPrefix(v, "https://github.com/") && strings.Contains(v, "/pull/")
+}
+
+func hasCommittedGitCompletionEvidence(row map[string]any) bool {
+	for _, evidence := range stringListField(row, "evidence") {
+		if isCommittedGitCompletionEvidence(evidence) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCommittedGitCompletionEvidence(evidence string) bool {
+	v := strings.TrimSpace(strings.ToLower(evidence))
+	if strings.HasPrefix(v, "commit:") || strings.HasPrefix(v, "pr:") {
 		i := strings.Index(v, ":")
 		return i >= 0 && strings.TrimSpace(v[i+1:]) != ""
 	}

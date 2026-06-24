@@ -84,6 +84,21 @@ func TestAuditPass_GitEvidenceFailRejectsDoneWithoutCommitEvidence(t *testing.T)
 	}
 }
 
+func TestAuditPass_GitEvidenceFailRejectsNoCommitEvidence(t *testing.T) {
+	target, _ := mustInit(t)
+	t.Setenv("LEDGER_AGENT", "codex")
+	setGitEvidencePolicy(t, target, "fail")
+	driveToAuditReady(t, target, "AUP-GIT-NO-COMMIT")
+	var stderr bytes.Buffer
+	code := RunAuditCLI([]string{"pass", "--target", target, "--ticket", "AUP-GIT-NO-COMMIT", "--evidence", "go test", "--evidence", "no_commit: docs only"}, &bytes.Buffer{}, &bytes.Buffer{}, &stderr)
+	if code == 0 {
+		t.Fatalf("expected no_commit evidence to fail committed git evidence gate")
+	}
+	if !strings.Contains(stderr.String(), "committed Git evidence") {
+		t.Fatalf("stderr should explain committed git evidence requirement, got: %s", stderr.String())
+	}
+}
+
 func TestAuditPass_GitEvidenceFailAcceptsCommitEvidence(t *testing.T) {
 	target, _ := mustInit(t)
 	t.Setenv("LEDGER_AGENT", "codex")
