@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hgwk/ldgr/internal/viewer"
 )
@@ -51,6 +52,20 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 		srv = viewer.NewServer(store)
 	}
 
+	// Reuse an already-running viewer instead of spawning a duplicate on the next
+	// free port. Without this, repeated `ldgr view` stacks up servers (3030,
+	// 3031, ...) and a new browser tab each time. Only in registry mode and on a
+	// fixed port — port 0 always wants a fresh OS-assigned instance.
+	if *target == "" && *port != 0 {
+		existing := fmt.Sprintf("http://127.0.0.1:%d", *port)
+		if isLdgrViewerRunning(existing) {
+			// Already running: do not spawn a duplicate and do not pop up another
+			// browser tab. Just point at the existing instance and exit.
+			fmt.Fprintf(stdout, "ldgr view already running on %s\n", existing)
+			return 0
+		}
+	}
+
 	ln, _, err := listenViewPort(*port)
 	if err != nil {
 		addr := fmt.Sprintf("127.0.0.1:%d", *port)
@@ -70,6 +85,26 @@ func RunViewCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// isLdgrViewerRunning reports whether an ldgr viewer is already serving at url.
+// It fetches the root page and looks for the viewer's title marker, so a foreign
+// process holding the port does not get mistaken for our viewer.
+func isLdgrViewerRunning(url string) bool {
+	client := &http.Client{Timeout: 600 * time.Millisecond}
+	resp, err := client.Get(url + "/")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(body), "<title>ldgr</title>")
 }
 
 func listenViewPort(start int) (net.Listener, int, error) {
