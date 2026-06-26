@@ -30,13 +30,13 @@ function insightPlainRow(text) {
 // turns one API item into a detail row element.
 const INSIGHT_CATS = [
   { key: "readyQueue", title: "Ready to start", sev: "good",
-    row: (it) => insightTicketRow(it.ticket, it.priority, it.status || it.state, it.task) },
+    row: (it) => insightTicketRow(ticketID(it), it.priority, it.status || it.state, ticketTitle(it)) },
   { key: "topBlockers", title: "Top blockers", sev: "high",
-    row: (it) => insightTicketRow(it.ticket, null, it.status, "blocks " + (it.dependents || []).length + " ticket(s)" + ((it.dependents || []).length ? ": " + it.dependents.join(", ") : "")) },
+    row: (it) => insightTicketRow(ticketID(it), null, it.status, "blocks " + (it.dependents || []).length + " ticket(s)" + ((it.dependents || []).length ? ": " + it.dependents.join(", ") : "")) },
   { key: "staleInProgress", title: "Stale in_progress", sev: "warn",
-    row: (it) => insightTicketRow(it.ticket, null, it.status, it.task, ageHuman(it.age_ms) + " since update") },
+    row: (it) => insightTicketRow(ticketID(it), null, it.status, ticketTitle(it), ageHuman(it.age_ms) + " since update") },
   { key: "closedWithoutWorklog", title: "Closed w/o worklog", sev: "warn",
-    row: (it) => insightTicketRow(it.ticket, it.priority, it.status || it.state, it.task) },
+    row: (it) => insightTicketRow(ticketID(it), it.priority, it.status || it.state, ticketTitle(it)) },
   { key: "worklogsWithoutTicket", title: "Orphan worklog", sev: "warn",
     row: (it) => insightPlainRow("worklog → ticket=" + (it.ticket || "?") + (it.task ? " · " + it.task : "")) },
   { key: "invalidated", title: "Invalidated rows", sev: "info",
@@ -47,7 +47,6 @@ async function renderInsights(root, background) {
   const ins = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/insights");
   if (shouldSkipRender("insights", ins, background)) return;
   root.innerHTML = "";
-  root.appendChild(el("div", { class: "page-title", text: "Insights" }));
 
   const counts = {};
   let total = 0;
@@ -168,6 +167,7 @@ function startPolling() {
   if (params.get("blocked")) state.kanbanFilter.blocked = params.get("blocked");
   if (params.get("evidence")) state.kanbanFilter.evidence = params.get("evidence");
   if (params.get("sort")) state.kanbanSort = params.get("sort");
+  if (["grid", "row", "column"].includes(params.get("layout"))) state.kanbanLayout = params.get("layout");
   if (params.get("tree_parent")) state.treeFilter.parent = params.get("tree_parent");
   if (params.get("tree_kind")) state.treeFilter.kind = params.get("tree_kind");
   if (params.get("tree_priority")) state.treeFilter.priority = params.get("tree_priority");

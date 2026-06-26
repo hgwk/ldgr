@@ -96,14 +96,27 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100dvh; }
+html { background: var(--bg); }
 body {
   font: 13px/1.5 var(--font-mono);
   color: var(--fg);
-  background: var(--bg);
+  background: transparent;
   display: grid;
   grid-template-columns: 240px 1fr;
   height: 100dvh;
   overflow: hidden;
+}
+/* Geeky animated backdrop: a faint matrix rain behind everything. The sidebar
+   and all cards/panels keep opaque surfaces, so it only shows in the negative
+   space of the main area (gaps, empty columns, blank pages). pointer-events:none
+   keeps it purely decorative; honored prefers-reduced-motion in app-bgfx.js. */
+#bg-fx {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
 }
 body.sidebar-collapsed {
   grid-template-columns: 0 1fr;
@@ -123,8 +136,8 @@ body.sidebar-collapsed {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg);
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 14px;
@@ -199,7 +212,7 @@ body.sidebar-collapsed #sidebar > * {
 /* Kanban keeps controls fixed-height and lets the board own the remaining area. */
 #page.page-kanban {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 #page.page-kanban .kanban-layout { min-height: 0; }
@@ -212,10 +225,46 @@ body.sidebar-collapsed #sidebar > * {
 #topbar h2 { margin: 0; font-size: 18px; font-weight: 600; }
 #topbar .display { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 
-.page-title {
+/* Right-aligned cluster: page name + per-page actions (e.g. ticket view switch). */
+#topbar .topbar-page {
+  margin-left: auto;
   font-size: 11px;
   text-transform: uppercase;
   color: var(--muted);
   letter-spacing: 0.08em;
-  margin: 0 0 var(--space-3) 0;
 }
+#topbar .topbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+#topbar .topbar-actions:empty { display: none; }
+#topbar .view-switch button { padding: 3px 12px; min-width: 0; }
+/* theme-toggle no longer needs to claim the free space; page-name does. */
+#topbar .theme-toggle { margin-left: 0; }
+
+/* Status pills — outlined semantic badges, shared by kanban cards, the drawer
+   header, the History table, insights, and the tree. Were class-only with no
+   CSS, so every state ("ready", "backlog", "done"…) rendered as plain text. */
+.pill {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.pill.ready             { color: var(--fg); }
+.pill.doing,
+.pill.in_progress      { color: var(--status-in_progress); }
+.pill.review,
+.pill.audit_ready      { color: var(--status-audit_ready); }
+.pill.rework,
+.pill.changes_requested { color: var(--status-changes_requested); }
+.pill.backlog,
+.pill.open             { color: var(--muted); }
+.pill.blocked          { color: var(--status-blocked); }
+.pill.done             { color: var(--status-done); }
+.pill.dropped,
+.pill.cancelled        { color: var(--status-cancelled); }

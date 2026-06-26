@@ -11,6 +11,7 @@ let state = {
   ticketView: "kanban",
   kanbanFilter: { priority: "", kind: "", status: "", parent: "", owner: "", claim: "", team: "", blocked: "", evidence: "" },
   kanbanSort: "ts",
+  kanbanLayout: "grid",
   treeFilter: { parent: "", kind: "", priority: "", status: "" },
   worklogFilter: { q: "", agent: "" },
   worklogSort: "newest",
@@ -228,6 +229,7 @@ function syncURL() {
   if (state.kanbanFilter.blocked) params.set("blocked", state.kanbanFilter.blocked);
   if (state.kanbanFilter.evidence) params.set("evidence", state.kanbanFilter.evidence);
   if (state.kanbanSort !== "ts") params.set("sort", state.kanbanSort);
+  if (state.kanbanLayout !== "grid") params.set("layout", state.kanbanLayout);
   if (state.treeFilter.parent) params.set("tree_parent", state.treeFilter.parent);
   if (state.treeFilter.kind) params.set("tree_kind", state.treeFilter.kind);
   if (state.treeFilter.priority) params.set("tree_priority", state.treeFilter.priority);
@@ -251,9 +253,29 @@ async function loadHeader() {
   }
 }
 
+const PAGE_NAMES = {
+  dashboard: "Dashboard",
+  tickets: "Tickets",
+  audit: "Audit queue",
+  worklog: "Worklog",
+  insights: "Insights",
+};
+
 async function loadPage(opts) {
   const background = Boolean(opts && opts.background);
   const page = $("page");
+  const pageName = $("page-name");
+  if (pageName) pageName.textContent = state.projectId ? (PAGE_NAMES[state.page] || "") : "";
+  const topbarActions = $("topbar-actions");
+  if (topbarActions) {
+    topbarActions.innerHTML = "";
+    // The ticket view switch reflects state only, so render it here rather than
+    // inside renderTickets — background polls can skip the page render, and the
+    // switch must persist regardless.
+    if (state.projectId && state.page === "tickets" && typeof ticketViewSwitch === "function") {
+      topbarActions.appendChild(ticketViewSwitch());
+    }
+  }
   if (!state.projectId) {
     page.innerHTML = "";
     page.appendChild(el("div", { class: "state-empty", text: "Pick a project from the sidebar." }));

@@ -25,8 +25,8 @@
   position: sticky;
   top: 0;
   float: right;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   margin: 0 0 var(--space-3) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -37,7 +37,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  z-index: 1;
+  z-index: 3;
 }
 #drawer .close:hover {
   background: var(--surface-2);
@@ -47,20 +47,38 @@
   outline-offset: 2px;
 }
 .drawer-head {
-  display: flex; align-items: baseline; gap: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-id { font-size: 18px; font-weight: 600; }
+.drawer-task {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
   margin-bottom: var(--space-4);
 }
-.drawer-id { font-size: 16px; }
-.drawer-task { font-size: 14px; margin-bottom: var(--space-3); }
 .drawer-meta {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 4px var(--space-3);
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
   margin: 0 0 var(--space-4) 0;
+  padding: var(--space-3);
   font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .drawer-meta dt { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
 .drawer-meta dd { margin: 0; }
+/* Secondary prose (e.g. event.summary) sits quieter than primary notes. */
+.drawer-prose-sub { font-size: 11px; color: var(--muted); }
 .drawer-details {
   margin-bottom: var(--space-4);
 }
@@ -80,7 +98,7 @@
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 240px;
+  max-height: 360px;
   overflow-y: auto;
 }
 .drawer-prose:focus-visible,
@@ -109,9 +127,34 @@
   overflow-x: auto;
   margin: 0;
 }
-/* History table inside the drawer: keep long notes from blowing out width. */
-#drawer table.dense { table-layout: fixed; word-break: break-word; }
-#drawer table.dense td { vertical-align: top; }
+/* History / Worklog tables inside the drawer. table-layout:fixed keeps long
+   notes from blowing out width; the rest gives them a real table look (header
+   rule, row separators, aligned padding) instead of raw browser defaults. */
+#drawer table.dense {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: var(--space-4);
+}
+#drawer table.dense th {
+  text-align: left;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  padding: 4px var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+#drawer table.dense td {
+  vertical-align: top;
+  word-break: break-word;
+  padding: 5px var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+#drawer table.dense tbody tr:last-child td { border-bottom: 0; }
+#drawer table.dense tbody tr:hover { background: var(--surface-2); }
 .provenance-row {
   display: flex;
   flex-wrap: wrap;

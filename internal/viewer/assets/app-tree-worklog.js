@@ -3,8 +3,6 @@ async function renderTree(root, background) {
   const t = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/tickets");
   if (shouldSkipRender("tree", t, background)) return;
   root.innerHTML = "";
-  root.appendChild(el("div", { class: "page-title", text: "Tickets" }));
-  appendTicketViewSwitch(root);
 
   // Flatten the buckets into one list of latest rows.
   const all = [];

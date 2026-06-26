@@ -146,9 +146,9 @@ function renderDrawerWorklogs(worklog) {
   for (const r of worklog) {
     tb.appendChild(el("tr", null,
       el("td", { text: fmtTS(r.ts) }),
-      el("td", { text: r.task || "" }),
-      el("td", { text: r.result || "" }),
-      el("td", { text: r.agent || "" }),
+      el("td", { text: r.task || r.title || "" }),
+      el("td", { text: r.result || r.summary || r.notes || "" }),
+      el("td", { text: r.agent || r.actor || "" }),
     ));
   }
   table.appendChild(tb);

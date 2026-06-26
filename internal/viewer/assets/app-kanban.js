@@ -7,8 +7,6 @@ async function renderKanban(root, background) {
   ]);
   if (shouldSkipRender("kanban", { k, coordination }, background)) return;
   root.innerHTML = "";
-  root.appendChild(el("div", { class: "page-title", text: "Tickets" }));
-  appendTicketViewSwitch(root);
 
   const allTickets = [];
   for (const col of (k.columns || [])) for (const t of (col.tickets || [])) allTickets.push(t);
@@ -46,15 +44,24 @@ async function renderKanban(root, background) {
     syncURL();
   }
 
+  if (!["grid", "row", "column"].includes(state.kanbanLayout)) state.kanbanLayout = "grid";
+
   // Filter bar
   const bar = el("div", { class: "kanban-bar" });
+  bar.appendChild(selectControl([
+    { value: "grid", text: "Layout: grid" },
+    { value: "row", text: "Layout: rows" },
+    { value: "column", text: "Layout: columns" },
+  ], state.kanbanLayout, "Layout: grid", (v) => { state.kanbanLayout = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(priorityOptions.map(v => ({ value: v, text: v ? "Priority " + v : "" })), state.kanbanFilter.priority, "All priorities", (v) => { state.kanbanFilter.priority = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(kindOptions.map(v => ({ value: v, text: v ? (canonical ? "Type " : "Kind ") + v : "" })), state.kanbanFilter.kind, canonical ? "All types" : "All kinds", (v) => { state.kanbanFilter.kind = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl(stateOptions.map(v => ({ value: v, text: v ? (canonical ? "State " : "Status ") + v : "" })), state.kanbanFilter.status, canonical ? "All states" : "All statuses", (v) => { state.kanbanFilter.status = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", ...parents], state.kanbanFilter.parent, "All parents", (v) => { state.kanbanFilter.parent = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", ...owners], state.kanbanFilter.owner, "All owners", (v) => { state.kanbanFilter.owner = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(["", ...claims], state.kanbanFilter.claim, "All claims", (v) => { state.kanbanFilter.claim = v; syncURL(); loadPage(); }));
-  bar.appendChild(selectControl(teamOptions, state.kanbanFilter.team, "All teams", (v) => { state.kanbanFilter.team = v; syncURL(); loadPage(); }));
+  // Data-driven filters only earn a slot when the board actually has values for
+  // them — otherwise they render as empty, dead dropdowns (e.g. no claims/teams).
+  if (parents.length > 0) bar.appendChild(selectControl(["", ...parents], state.kanbanFilter.parent, "All parents", (v) => { state.kanbanFilter.parent = v; syncURL(); loadPage(); }));
+  if (owners.length > 0) bar.appendChild(selectControl(["", ...owners], state.kanbanFilter.owner, "All owners", (v) => { state.kanbanFilter.owner = v; syncURL(); loadPage(); }));
+  if (claims.length > 0) bar.appendChild(selectControl(["", ...claims], state.kanbanFilter.claim, "All claims", (v) => { state.kanbanFilter.claim = v; syncURL(); loadPage(); }));
+  if (teams.length > 0) bar.appendChild(selectControl(teamOptions, state.kanbanFilter.team, "All teams", (v) => { state.kanbanFilter.team = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl([{ value: "", text: "" }, { value: "yes", text: "Blocked only" }], state.kanbanFilter.blocked, "Any blocker", (v) => { state.kanbanFilter.blocked = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl([{ value: "", text: "" }, { value: "present", text: "Evidence present" }, { value: "missing", text: "Evidence missing" }], state.kanbanFilter.evidence, "Any evidence", (v) => { state.kanbanFilter.evidence = v; syncURL(); loadPage(); }));
   bar.appendChild(selectControl([
@@ -82,7 +89,7 @@ async function renderKanban(root, background) {
     : cols;
   const conflictTickets = coordinationConflictTickets(coordination);
   const layout = el("div", { class: "kanban-layout" });
-  const board = el("div", { class: "kanban-board" });
+  const board = el("div", { class: "kanban-board layout-" + state.kanbanLayout });
   for (const col of orderedCols) {
     const colEl = el("div", { class: "kanban-col" });
     const head = el("div", { class: "kanban-col-head" });
@@ -156,7 +163,8 @@ function kanbanCard(t, conflictTickets) {
   const top = el("div", { class: "kanban-card-top" });
   const idGroup = el("span", { class: "kanban-card-idgroup" });
   idGroup.appendChild(el("span", { class: "mono kanban-card-id", text: id || "—" }));
-  if (stateName) idGroup.appendChild(el("span", { class: "pill " + stateName, text: stateName }));
+  // The state pill lives in the badges row below, not here — in a narrow grid
+  // column it stole all the width and ellipsized the id down to nothing.
   if (tone.chip) {
     idGroup.appendChild(el("span", {
       class: "kanban-age-chip " + tone.cls + "-chip",
@@ -183,6 +191,7 @@ function kanbanCard(t, conflictTickets) {
   card.appendChild(task);
 
   const badges = el("div", { class: "kanban-badges" });
+  if (stateName) badges.appendChild(el("span", { class: "pill " + stateName, text: stateName }));
   if (t.priority) badges.appendChild(el("span", { class: "badge badge-prio badge-prio-" + t.priority.toLowerCase(), text: t.priority }));
   const kind = t.kind || t.type || "";
   const area = t.category || t.area || "";

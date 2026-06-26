@@ -8,18 +8,6 @@ async function renderTickets(root, background) {
   await renderKanban(root, background);
 }
 
-function appendTicketViewSwitch(root) {
-  const title = root.querySelector(".page-title");
-  if (title) title.textContent = "Tickets";
-  const bar = el("div", { class: "kanban-bar" });
-  bar.appendChild(ticketViewSwitch());
-  if (title && title.nextSibling) {
-    root.insertBefore(bar, title.nextSibling);
-    return;
-  }
-  root.insertBefore(bar, root.firstChild);
-}
-
 function ticketViewSwitch() {
   const group = el("div", { class: "view-switch", role: "group", "aria-label": "Ticket view" });
   for (const view of ["kanban", "tree"]) {

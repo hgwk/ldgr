@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
+<canvas id="bg-fx" aria-hidden="true"></canvas>
 <aside id="sidebar">
   <h1>ldgr</h1>
   <div class="nav-section">Projects</div>
@@ -28,6 +29,8 @@
     <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Close sidebar" title="Close sidebar"></button>
     <h2 id="project-name">Select a project</h2>
     <span id="project-display" class="display"></span>
+    <span id="page-name" class="topbar-page"></span>
+    <div id="topbar-actions" class="topbar-actions"></div>
     <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
   </header>
   <div id="page"></div>
@@ -48,5 +51,6 @@
 <script src="/assets/app-tree-worklog.js"></script>
 <script src="/assets/app-worklog.js"></script>
 <script src="/assets/app-insights-init.js"></script>
+<script src="/assets/app-bgfx.js"></script>
 </body>
 </html>

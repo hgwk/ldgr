@@ -4,7 +4,6 @@ async function renderDashboard(root, background) {
   const d = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/dashboard");
   if (shouldSkipRender("dashboard", d, background)) return;
   root.innerHTML = "";
-  root.appendChild(el("div", { class: "page-title", text: "Dashboard" }));
 
   const metrics = el("div", { class: "dashboard-metrics" });
   metrics.appendChild(metricTile("Progress", (d.progress && d.progress.percent || 0) + "%", progressDetail(d.progress)));
@@ -38,10 +37,10 @@ function parentPanel(parents) {
   panel.appendChild(el("div", { class: "section-heading" }, el("h3", { text: "Parents" })));
   const list = el("div", { class: "dashboard-list" });
   for (const p of parents.slice(0, 12)) {
-    const row = el("div", { class: "dashboard-row" });
-    row.appendChild(el("span", { class: "mono", text: p.parent || "—" }));
-    row.appendChild(el("span", { text: (p.percent || 0) + "%" }));
-    row.appendChild(el("span", { class: "muted", text: p.active + " active" }));
+    const row = el("div", { class: "dashboard-row dashboard-row-parent" });
+    row.appendChild(el("span", { class: "mono dash-parent-name", text: p.parent || "—" }));
+    row.appendChild(el("span", { class: "dash-pct", text: (p.percent || 0) + "%" }));
+    row.appendChild(el("span", { class: "muted dash-active", text: p.active + " active" }));
     list.appendChild(row);
   }
   if (parents.length === 0) list.appendChild(el("div", { class: "state-empty", text: "No parent progress yet." }));

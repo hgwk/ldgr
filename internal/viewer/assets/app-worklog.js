@@ -3,8 +3,15 @@ async function renderWorklog(root, background) {
   const w = await getJSON("/api/projects/" + encodeURIComponent(state.projectId) + "/worklog");
   if (shouldSkipRender("worklog", w, background)) return;
   root.innerHTML = "";
-  root.appendChild(el("div", { class: "page-title", text: "Worklog" }));
-  const allRows = w.rows || [];
+  // Worklog rows use actor/title/summary; normalize to the agent/task/result the
+  // rest of this view (and the filters/search) expect. Without this the agent
+  // filter, agent chips, task text, and result text all render blank.
+  const allRows = (w.rows || []).map((r) => ({
+    ...r,
+    agent: r.agent || r.actor || "",
+    task: r.task || r.title || "",
+    result: r.result || r.summary || r.notes || "",
+  }));
   const agents = uniqueSorted(allRows.map((r) => r.agent));
   clearInvalidSelection(state.worklogFilter, "agent", ["", ...agents]);
   if (!["newest", "oldest"].includes(state.worklogSort)) {

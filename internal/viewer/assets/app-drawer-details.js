@@ -81,7 +81,7 @@ function renderDrawerDetails(latest, history) {
   if (event.summary) {
     const section = el("section", { class: "drawer-section" });
     section.appendChild(el("h4", { class: "drawer-section-title", text: "event.summary" }));
-    section.appendChild(el("div", { class: "drawer-prose", tabindex: "0", text: event.summary }));
+    section.appendChild(el("div", { class: "drawer-prose drawer-prose-sub", tabindex: "0", text: event.summary }));
     wrap.appendChild(section);
   }
 
