@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.14 - 2026-06-30
+
+### Fixed
+
+- Keep Tree view ticket badges content-sized so long rows truncate the title
+  instead of stretching status pills across the row.
+- Publish releases with the current npm CLI, matching the cduo release path.
+
 ## v0.3.13 - 2026-06-16
 
 ### Fixed

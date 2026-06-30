@@ -156,19 +156,55 @@
 .tree-graph-dot.status-rework { fill: var(--status-changes_requested); }
 .tree-graph-dot.status-dropped { fill: var(--status-cancelled); }
 .tree-node-head {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(120px, auto) auto auto 1fr auto;
+  grid-template-columns: minmax(14ch, 36ch) max-content max-content minmax(0, 1fr) max-content;
   gap: var(--space-2);
   align-items: center;
   padding: 0 var(--space-2);
   border-radius: 4px;
   cursor: pointer;
+  overflow: hidden;
 }
 .tree-node-head:hover { background: var(--surface-2); }
-.tree-task { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-ts { font-size: 11px; }
+.tree-node-head > .mono {
+  min-width: 0;
+  max-width: 36ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-node-head .badge,
+.tree-node-head .pill {
+  justify-self: start;
+  width: max-content;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-task {
+  min-width: 0;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-ts {
+  justify-self: end;
+  font-size: 11px;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .tree-node-head {
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+  }
+  .tree-task,
+  .tree-ts {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
 
 /* Insights — summary cards + drill-down */
 .insight-grid {

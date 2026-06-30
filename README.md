@@ -1,20 +1,48 @@
 # ldgr
 
-Append-only project ledger for LLM agents. Multi-project unified view.
+[![npm version](https://img.shields.io/npm/v/@hgwk/ldgr.svg)](https://www.npmjs.com/package/@hgwk/ldgr)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Append-only task, ticket, audit, worklog, and coordination ledger for LLM-agent
+projects, with a multi-project local viewer.
 
 (Formerly `ledger-kit`. The short name is now the canonical product name; the long name lingers only in older release notes and migration docs.)
 
-See `docs/superpowers/specs/` in the design repo for the full spec.
+## Requirements
 
-## Usage
+- macOS or Linux
+- Go is optional for source installs; npm installs download the native binary
+  from GitHub Releases
+
+## Install
 
 ```bash
+npm install -g @hgwk/ldgr
+```
+
+Or install from source with Go:
+
+```bash
+go install github.com/hgwk/ldgr@latest
+```
+
+Make sure `$(go env GOPATH)/bin` is on your `$PATH`. macOS/Linux:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+## Quick Start
+
+```bash
+cd /path/to/project
+ldgr init
 ldgr version
 ldgr verify
 ldgr view
 ```
 
-## Companion Tool Roles
+## Companion Suite
 
 - `cduo doctor` checks pair-agent runtime setup and project hook readiness.
 - `ldgr verify` checks ledger lifecycle, audit, worklog, and Git evidence.
@@ -220,24 +248,6 @@ Set `ledger/config.json` field `git_evidence` to tune completion evidence:
 - `fail`: fail verification for completed work without Git evidence
 - `off`: suppress this one Git-evidence guardrail
 
-## Install
-
-```bash
-npm install -g @hgwk/ldgr
-```
-
-Or install from source with Go:
-
-```bash
-go install github.com/hgwk/ldgr@latest
-```
-
-Make sure `$(go env GOPATH)/bin` is on your `$PATH`. macOS/Linux:
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
 For local development and manual installs, use this shared convention:
 
 ```bash
@@ -258,6 +268,24 @@ install -m 0755 ldgr_*/ldgr ~/.local/bin/ldgr
 
 Use `~/.local/bin/ldgr` for local installs. A Homebrew tap is not published yet;
 until then, use npm, `go install`, or the release tarball.
+
+## Release Flow
+
+- GitHub repository: `hgwk/ldgr`
+- npm package: `@hgwk/ldgr`
+- GitHub Releases hosts platform-specific Go binaries
+- `.github/workflows/release.yml` builds and publishes binaries on version tags
+- The npm package is published from GitHub Actions through npm Trusted
+  Publishing (OIDC), not a long-lived `NPM_TOKEN`
+- The npm package is a thin wrapper that downloads the appropriate binary from
+  GitHub Releases on install
+- Release tags must match `cmd/version.go` and `package.json`
+- npm Trusted Publisher configuration:
+  - Publisher: `GitHub Actions`
+  - Organization or user: `hgwk`
+  - Repository: `ldgr`
+  - Workflow filename: `release.yml`
+  - Environment name: empty
 
 ## Integrate into a repo
 
