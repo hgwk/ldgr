@@ -4,7 +4,7 @@
   "description": "Append-only agent task ledger and local project viewer.",
   "license": "MIT",
   "bin": {
-    "ldgr": "./bin/ldgr"
+    "ldgr": "bin/ldgr"
   },
   "files": [
     "bin/",
